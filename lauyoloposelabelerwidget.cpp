@@ -79,13 +79,16 @@ void LAUYoloPoseLabelerWidget::initialize()
     fiducials << "Genitalia";
 
     palette = new LAUYoloPoseLabelerPalette(labels, fiducials);
-    connect(label, SIGNAL(emitPaint(QPainter*)), palette, SLOT(onPaintEvent(QPainter*)));
+    connect(label, SIGNAL(emitMouseClick(int,int)), palette, SLOT(onSpinBoxValueChanged(int,int)));
+    connect(label, SIGNAL(emitPaint(QPainter*,QSize)), palette, SLOT(onPaintEvent(QPainter*,QSize)));
     connect(palette, SIGNAL(emitPreviousButtonClicked(bool)), this, SLOT(onPreviousButtonClicked(bool)));
     connect(palette, SIGNAL(emitNextButtonClicked(bool)), this, SLOT(onNextButtonClicked(bool)));
     box->layout()->addWidget(palette);
     box->setFixedWidth(380);
     this->layout()->addWidget(box);
 
+    palette->setXml(image.xmlData());
+    palette->setImageSize(image.width(), image.height());
     label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
 }
 
@@ -94,10 +97,10 @@ void LAUYoloPoseLabelerWidget::initialize()
 /*************************************************************************************/
 LAUYoloPoseLabelerWidget::~LAUYoloPoseLabelerWidget()
 {
-    if (dirtyFlag){
+    if (palette->isDirty()){
         image.setXmlData(palette->xml());
         image.save(fileStrings.first());
-        dirtyFlag = true;
+        palette->setDirty(false);
     }
 }
 
@@ -106,16 +109,18 @@ LAUYoloPoseLabelerWidget::~LAUYoloPoseLabelerWidget()
 /*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onPreviousButtonClicked(bool state)
 {
-    if (dirtyFlag){
+    if (palette->isDirty()){
         image.setXmlData(palette->xml());
         image.save(fileStrings.first());
-        dirtyFlag = true;
+        palette->setDirty(false);
     }
 
     if (fileStrings.count() > 1){
         QString string = fileStrings.takeLast();
         fileStrings.prepend(string);
         image = LAUImage(fileStrings.first());
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
         label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
         this->setWindowTitle(QFileInfo(fileStrings.first()).fileName());
     }
@@ -126,16 +131,18 @@ void LAUYoloPoseLabelerWidget::onPreviousButtonClicked(bool state)
 /*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onNextButtonClicked(bool state)
 {
-    if (dirtyFlag){
+    if (palette->isDirty()){
         image.setXmlData(palette->xml());
         image.save(fileStrings.first());
-        dirtyFlag = true;
+        palette->setDirty(false);
     }
 
     if (fileStrings.count() > 1){
         QString string = fileStrings.takeFirst();
         fileStrings.append(string);
         image = LAUImage(fileStrings.first());
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
         label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
         this->setWindowTitle(QFileInfo(fileStrings.first()).fileName());
     }
@@ -164,12 +171,14 @@ LAUFiducialWidget::LAUFiducialWidget(QWidget *parent) : QWidget(parent)
     xSpinBox = new QSpinBox();
     xSpinBox->setFixedWidth(60);
     xSpinBox->setReadOnly(true);
+    xSpinBox->setMaximum(10000);
     xSpinBox->setAlignment(Qt::AlignRight);
     this->layout()->addWidget(xSpinBox);
 
     ySpinBox = new QSpinBox();
     ySpinBox->setFixedWidth(60);
     ySpinBox->setReadOnly(true);
+    ySpinBox->setMaximum(10000);
     ySpinBox->setAlignment(Qt::AlignRight);
     this->layout()->addWidget(ySpinBox);
 
@@ -254,6 +263,7 @@ void LAUYoloPoseLabelerPalette::initialize(QStringList labels, QStringList fiduc
         LAUFiducialWidget *widget = new LAUFiducialWidget();
         widget->lineEdit->setText(fiducials.at(n));
         widget->lineEdit->setReadOnly(true);
+        widget->index = n;
 
         QLabel *label = new QLabel(QString("%1:").arg(n+1));
         label->setAlignment(Qt::AlignVCenter | Qt::AlignRight);
@@ -340,57 +350,73 @@ QByteArray LAUYoloPoseLabelerPalette::xml()
 /*************************************************************************************/
 void LAUYoloPoseLabelerPalette::setXml(QByteArray string)
 {
-    QXmlStreamReader reader(string);
-    while (!reader.atEnd()) {
-        if (reader.readNext()) {
-            QString name = reader.name().toString();
-            if (name == "label") {
-                QStringList labelStrings = reader.readElementText().split(",");
-                if (labelStrings.count() > 0){
-                    labelsComboBox->setCurrentText(labelStrings.last().simplified());
-                }
-            } else if (name == "fiducial") {
-                QString string = reader.readElementText();
-                int indexA = string.indexOf("\"") + 1;
-                int indexB = string.lastIndexOf("\"");
+    if (string.isEmpty()){
+        for (int n = 0; n < fiducialWidgets.count(); n++){
+            LAUFiducialWidget *widget = fiducialWidgets.at(n);
+            widget->xSpinBox->setValue(0);
+            widget->ySpinBox->setValue(0);
+            widget->zRadioButton->setChecked(true);
+            labelsComboBox->setCurrentIndex(0);
+        }
+    } else {
+        QXmlStreamReader reader(string);
+        while (!reader.atEnd()) {
+            if (reader.readNext()) {
+                QString name = reader.name().toString();
+                if (name == "label") {
+                    QStringList labelStrings = reader.readElementText().split(",");
+                    if (labelStrings.count() > 0){
+                        labelsComboBox->setCurrentText(labelStrings.last().simplified());
+                    }
+                } else if (name == "fiducial") {
+                    QString string = reader.readElementText();
+                    int indexA = string.indexOf("\"") + 1;
+                    int indexB = string.lastIndexOf("\"");
 
-                if (indexA > -1 && indexB < string.length()){
-                    QString label = string;
-                    label = label.left(indexB);
-                    label = label.right(indexB - indexA);
+                    if (indexA > -1 && indexB < string.length()){
+                        QString label = string;
+                        label = label.left(indexB);
+                        label = label.right(indexB - indexA);
 
-                    for (int n = 0; n < fiducialWidgets.count(); n++){
-                        if (fiducialWidgets.at(n)->lineEdit->text() == label){
-                            string = string.right(string.length() - indexB - 2);
-                            QStringList strings = string.split(",");
-                            if (strings.count() == 3){
-                                fiducialWidgets.at(n)->zRadioButton->setChecked(strings.at(0).toInt());
-                                fiducialWidgets.at(n)->xSpinBox->setValue(strings.at(1).toInt());
-                                fiducialWidgets.at(n)->ySpinBox->setValue(strings.at(2).toInt());
+                        for (int n = 0; n < fiducialWidgets.count(); n++){
+                            if (fiducialWidgets.at(n)->lineEdit->text() == label){
+                                string = string.right(string.length() - indexB - 2);
+                                QStringList strings = string.split(",");
+                                if (strings.count() == 3){
+                                    fiducialWidgets.at(n)->zRadioButton->setChecked(strings.at(0).toInt());
+                                    fiducialWidgets.at(n)->xSpinBox->setValue(strings.at(1).toInt());
+                                    fiducialWidgets.at(n)->ySpinBox->setValue(strings.at(2).toInt());
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
                 }
             }
         }
+        reader.clear();
     }
-    reader.clear();
 }
 
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-void LAUYoloPoseLabelerPalette::onPaintEvent(QPainter *painter)
+void LAUYoloPoseLabelerPalette::onPaintEvent(QPainter *painter, QSize sze)
 {
     for (int n = 0; n < fiducialWidgets.count(); n++){
         QPoint point;
-        point.setX(fiducialWidgets.at(n)->xSpinBox->value());
-        point.setY(fiducialWidgets.at(n)->ySpinBox->value());
+        point.setX((double)fiducialWidgets.at(n)->xSpinBox->value() / (double)imageWidth * (double)sze.width());
+        point.setY((double)fiducialWidgets.at(n)->ySpinBox->value() / (double)imageHeight * (double)sze.height());
 
-        painter->setPen(QPen(Qt::red, 6.0));
-        painter->setBrush(QBrush(QColor(Qt::red), Qt::SolidPattern));
+        if (fiducialWidgets.at(n)->zRadioButton->isChecked()){
+            painter->setPen(QPen(Qt::red, 6.0));
+            painter->setBrush(QBrush(QColor(Qt::red), Qt::SolidPattern));
+        } else {
+            painter->setPen(QPen(Qt::blue, 6.0));
+            painter->setBrush(QBrush(QColor(Qt::blue), Qt::SolidPattern));
+        }
         painter->drawEllipse(point.x()-2, point.y()-2, 5, 5);
+        painter->drawText(point + QPoint(10,10), QString("%1").arg(fiducialWidgets.at(n)->index + 1));
     }
 }
 
@@ -424,7 +450,21 @@ void LAUFiducialLabel::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing);
     painter.drawPixmap(QRect(0, 0, this->width(), this->height()), pixmap);
 
-    emit emitPaint(&painter);
+    emit emitPaint(&painter, this->size());
 
     painter.end();
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+void LAUFiducialLabel::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        int x = qRound(event->pos().x() / (double)this->width() * pixmap.width());
+        int y = qRound(event->pos().y() / (double)this->height() * pixmap.height());
+
+        emit emitMouseClick(x, y);
+        update();
+    }
 }

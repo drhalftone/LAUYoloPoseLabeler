@@ -32,6 +32,7 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *event);
+    void mouseDoubleClickEvent(QMouseEvent *event);
     void wheelEvent(QWheelEvent *event) { ; }
     void mousePressEvent(QMouseEvent *event) { ; }
     void mouseReleaseEvent(QMouseEvent *event) { ; }
@@ -40,7 +41,8 @@ protected:
     void keyPressEvent(QKeyEvent *event) { ; }
 
 signals:
-    void emitPaint(QPainter *painter);
+    void emitPaint(QPainter *painter, QSize sze);
+    void emitMouseClick(int x, int y);
 
 private:
     QPixmap pixmap;
@@ -56,6 +58,7 @@ class LAUFiducialWidget : public QWidget
 public:
     LAUFiducialWidget(QWidget *parent = nullptr);
 
+    int index = -1;
     QLineEdit *lineEdit = nullptr;
     QPushButton *setButton = nullptr;
     QSpinBox *xSpinBox = nullptr;
@@ -77,9 +80,17 @@ public:
 
     QByteArray xml();
     void setXml(QByteArray string);
+    void setImageSize(int x, int y)
+    {
+        imageWidth = x;
+        imageHeight = y;
+    }
+
+    bool setDirty(bool state) { dirtyFlag = state; }
+    bool isDirty() const { return(dirtyFlag); }
 
 public slots:
-    void onPaintEvent(QPainter *painter);
+    void onPaintEvent(QPainter *painter, QSize sze);
     void onNextButtonClicked(bool state)
     {
         emit emitNextButtonClicked(state);
@@ -90,14 +101,27 @@ public slots:
         emit emitPreviousButtonClicked(state);
     }
 
-    void onSetButtonClicked() { ; }
-    void onSpinBoxValueChanged() { ; }
-    void onVisibleRadioButtonToggled() { ; }
+    void onSpinBoxValueChanged(int x, int y)
+    {
+        fiducialWidgets.constFirst()->xSpinBox->setValue(x);
+        fiducialWidgets.constFirst()->ySpinBox->setValue(y);
+        dirtyFlag = true;
+        onEnableNextFiducial();
+    }
+
+    void onVisibleRadioButtonToggled()
+    {
+        fiducialWidgets.constFirst()->zRadioButton->toggle();
+        dirtyFlag = true;
+        onEnableNextFiducial();
+    }
 
     void onEnableNextFiducial();
     void onEnablePreviousFiducial();
 
 private:
+    bool dirtyFlag = false;
+    int imageWidth, imageHeight;
     void initialize(QStringList labels, QStringList fiducials);
     QList<LAUFiducialWidget*> fiducialWidgets;
     QComboBox *labelsComboBox;
@@ -144,6 +168,10 @@ protected:
             } else if (((QKeyEvent*)event)->key() == Qt::Key_Up){
                 palette->onEnablePreviousFiducial();
                 return (true);
+            } else if (((QKeyEvent*)event)->key() == Qt::Key_Space){
+                palette->onVisibleRadioButtonToggled();
+                label->update();
+                return (true);
             }
         }
         return (false);
@@ -152,7 +180,6 @@ protected:
 private:
     void initialize();
     LAUImage image;
-    bool dirtyFlag = false;
     QStringList fileStrings;
     LAUFiducialLabel *label = nullptr;
     LAUYoloPoseLabelerPalette *palette = nullptr;
