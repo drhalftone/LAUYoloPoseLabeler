@@ -33,12 +33,6 @@ public:
 protected:
     void paintEvent(QPaintEvent *event);
     void mouseDoubleClickEvent(QMouseEvent *event);
-    void wheelEvent(QWheelEvent *event) { ; }
-    void mousePressEvent(QMouseEvent *event) { ; }
-    void mouseReleaseEvent(QMouseEvent *event) { ; }
-    void mouseMoveEvent(QMouseEvent *event) { ; }
-    void keyReleaseEvent(QKeyEvent *event) { ; }
-    void keyPressEvent(QKeyEvent *event) { ; }
 
 signals:
     void emitPaint(QPainter *painter, QSize sze);
@@ -60,7 +54,6 @@ public:
 
     int index = -1;
     QLineEdit *lineEdit = nullptr;
-    QPushButton *setButton = nullptr;
     QSpinBox *xSpinBox = nullptr;
     QSpinBox *ySpinBox = nullptr;
     QRadioButton *zRadioButton = nullptr;
@@ -86,7 +79,7 @@ public:
         imageHeight = y;
     }
 
-    bool setDirty(bool state) { dirtyFlag = state; }
+    void setDirty(bool state) { dirtyFlag = state; }
     bool isDirty() const { return(dirtyFlag); }
 
 public slots:
@@ -99,6 +92,11 @@ public slots:
     void onPreviousButtonClicked(bool state)
     {
         emit emitPreviousButtonClicked(state);
+    }
+
+    void onLabelIndexChanged(int)
+    {
+        dirtyFlag = true;
     }
 
     void onSpinBoxValueChanged(int x, int y)
@@ -149,6 +147,8 @@ public slots:
 protected:
     bool eventFilter(QObject *obj, QEvent *event)
     {
+        Q_UNUSED(obj);
+
         if (event->type() == QEvent::KeyPress) {
             if (((QKeyEvent*)event)->key() == Qt::Key_Tab){
                 palette->onEnableNextFiducial();
@@ -171,6 +171,12 @@ protected:
             } else if (((QKeyEvent*)event)->key() == Qt::Key_Space){
                 palette->onVisibleRadioButtonToggled();
                 label->update();
+                return (true);
+            } else if (((QKeyEvent*)event)->key() == Qt::Key_Left){
+                this->onPreviousButtonClicked(true);
+                return (true);
+            } else if (((QKeyEvent*)event)->key() == Qt::Key_Right){
+                this->onNextButtonClicked(true);
                 return (true);
             }
         }

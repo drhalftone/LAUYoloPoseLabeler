@@ -109,6 +109,8 @@ LAUYoloPoseLabelerWidget::~LAUYoloPoseLabelerWidget()
 /*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onPreviousButtonClicked(bool state)
 {
+    Q_UNUSED(state);
+
     if (palette->isDirty()){
         image.setXmlData(palette->xml());
         image.save(fileStrings.first());
@@ -131,6 +133,8 @@ void LAUYoloPoseLabelerWidget::onPreviousButtonClicked(bool state)
 /*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onNextButtonClicked(bool state)
 {
+    Q_UNUSED(state);
+
     if (palette->isDirty()){
         image.setXmlData(palette->xml());
         image.save(fileStrings.first());
@@ -181,10 +185,6 @@ LAUFiducialWidget::LAUFiducialWidget(QWidget *parent) : QWidget(parent)
     ySpinBox->setMaximum(10000);
     ySpinBox->setAlignment(Qt::AlignRight);
     this->layout()->addWidget(ySpinBox);
-
-    //setButton = new QPushButton(QString("Set"));
-    //setButton->setFixedWidth(60);
-    //this->layout()->addWidget(setButton);
 }
 
 /*************************************************************************************/
@@ -251,6 +251,7 @@ void LAUYoloPoseLabelerPalette::initialize(QStringList labels, QStringList fiduc
 
     labelsComboBox = new QComboBox();
     labelsComboBox->addItems(labels);
+    connect(labelsComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(onLabelIndexChanged(int)));
     box->layout()->addWidget(labelsComboBox);
 
     box = new QGroupBox("Fiducials:");
@@ -403,6 +404,27 @@ void LAUYoloPoseLabelerPalette::setXml(QByteArray string)
 /*************************************************************************************/
 void LAUYoloPoseLabelerPalette::onPaintEvent(QPainter *painter, QSize sze)
 {
+    int xMin = 10000;
+    int xMax = -1000;
+    int yMin = 10000;
+    int yMax = -1000;
+
+    for (int n = 0; n < fiducialWidgets.count(); n++){
+        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value());
+        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value());
+        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value());
+        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value());
+    }
+
+    int xLeft = (double)(xMin - 20) / (double)imageWidth * (double)sze.width();
+    int xWide = (double)(xMax - xMin + 40) / (double)imageWidth * (double)sze.width();
+    int yTop = (double)(yMin - 20) / (double)imageHeight * (double)sze.height();
+    int yTall = (double)(yMax - yMin + 40) / (double)imageHeight * (double)sze.height();
+
+    painter->setPen(QPen(Qt::red, 3.0));
+    painter->setBrush(QBrush(QColor(Qt::red), Qt::NoBrush));
+    painter->drawRect(xLeft, yTop, xWide, yTall);
+
     for (int n = 0; n < fiducialWidgets.count(); n++){
         QPoint point;
         point.setX((double)fiducialWidgets.at(n)->xSpinBox->value() / (double)imageWidth * (double)sze.width());
@@ -445,6 +467,8 @@ void LAUYoloPoseLabelerPalette::onEnablePreviousFiducial()
 /*************************************************************************************/
 void LAUFiducialLabel::paintEvent(QPaintEvent *event)
 {
+    Q_UNUSED(event);
+
     QPainter painter;
     painter.begin(this);
     painter.setRenderHint(QPainter::Antialiasing);
