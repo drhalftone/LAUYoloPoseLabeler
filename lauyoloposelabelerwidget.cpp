@@ -416,6 +416,11 @@ void LAUYoloPoseLabelerPalette::onPaintEvent(QPainter *painter, QSize sze)
         yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value());
     }
 
+    // DON'T DRAW ANYTHING IF ALL FIDUCIALS ARE EQUAL TO ZERO
+    if (xMin == 0 && xMax == 0 && yMin == 0 && yMax == 0){
+        return;
+    }
+
     int xLeft = (double)(xMin - 20) / (double)imageWidth * (double)sze.width();
     int xWide = (double)(xMax - xMin + 40) / (double)imageWidth * (double)sze.width();
     int yTop = (double)(yMin - 20) / (double)imageHeight * (double)sze.height();
@@ -429,6 +434,10 @@ void LAUYoloPoseLabelerPalette::onPaintEvent(QPainter *painter, QSize sze)
         QPoint point;
         point.setX((double)fiducialWidgets.at(n)->xSpinBox->value() / (double)imageWidth * (double)sze.width());
         point.setY((double)fiducialWidgets.at(n)->ySpinBox->value() / (double)imageHeight * (double)sze.height());
+
+        if (point.x() == 0 && point.y() == 0){
+            continue;
+        }
 
         if (fiducialWidgets.at(n)->zRadioButton->isChecked()){
             painter->setPen(QPen(Qt::red, 6.0));

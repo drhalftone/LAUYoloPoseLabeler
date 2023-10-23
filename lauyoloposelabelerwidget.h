@@ -140,6 +140,8 @@ public:
     LAUYoloPoseLabelerWidget(QStringList strings = QStringList(), QWidget *parent = nullptr);
     ~LAUYoloPoseLabelerWidget();
 
+    bool isValid() const { return(fileStrings.isEmpty() == false); }
+
 public slots:
     void onPreviousButtonClicked(bool state);
     void onNextButtonClicked(bool state);
