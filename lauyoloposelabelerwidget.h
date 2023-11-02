@@ -33,10 +33,12 @@ public:
 protected:
     void paintEvent(QPaintEvent *event);
     void mouseDoubleClickEvent(QMouseEvent *event);
+    void mousePressEvent(QMouseEvent *event);
 
 signals:
     void emitPaint(QPainter *painter, QSize sze);
-    void emitMouseClick(int x, int y);
+    void emitMousePressEvent(int x, int y);
+    void emitMouseRightClickEvent(QMouseEvent *event);
 
 private:
     QPixmap pixmap;
@@ -71,7 +73,7 @@ public:
     LAUYoloPoseLabelerPalette(QStringList labels = QStringList(), QStringList fiducials = QStringList(), QWidget *parent = nullptr);
     ~LAUYoloPoseLabelerPalette();
 
-    QByteArray xml();
+    QByteArray xml() const;
     void setXml(QByteArray string);
     void setImageSize(int x, int y)
     {
@@ -81,6 +83,7 @@ public:
 
     void setDirty(bool state) { dirtyFlag = state; }
     bool isDirty() const { return(dirtyFlag); }
+    QString labelString(QRect *rect) const;
 
 public slots:
     void onPaintEvent(QPainter *painter, QSize sze);
@@ -143,6 +146,8 @@ public:
     bool isValid() const { return(fileStrings.isEmpty() == false); }
 
 public slots:
+    void onContextMenuTriggered(QMouseEvent *event);
+    void onExportLabelsForYoloTraining();
     void onPreviousButtonClicked(bool state);
     void onNextButtonClicked(bool state);
 

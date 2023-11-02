@@ -90,7 +90,7 @@ LAUImageData::LAUImageData(const LAUImageData &other)
 /****************************************************************************/
 LAUImageData::~LAUImageData()
 {
-    qDebug() << QString("LAUImageData::~LAUImageData() %1 (%2 x %3)").arg(--instanceCounter).arg(numRows).arg(numCols);
+    //qDebug() << QString("LAUImageData::~LAUImageData() %1 (%2 x %3)").arg(--instanceCounter).arg(numRows).arg(numCols);
     if (buffer != nullptr) {
         _mm_free(buffer);
         buffer = nullptr;
@@ -106,7 +106,7 @@ LAUImageData::~LAUImageData()
 /****************************************************************************/
 void LAUImageData::allocateBuffer()
 {
-    qDebug() << QString("LAUImageData::allocateBuffer() %1").arg(instanceCounter++) << numRows << numCols << numChns << numByts;
+    //qDebug() << QString("LAUImageData::allocateBuffer() %1").arg(instanceCounter++) << numRows << numCols << numChns << numByts;
 
     // ALLOCATE SPACE FOR HOLDING PIXEL DATA BASED ON NUMBER OF CHANNELS AND BYTES PER PIXEL
     unsigned long long numBytesToAllocate;
@@ -1445,7 +1445,7 @@ LAUImage LAUImage::convertToBinary(QString method)
 /****************************************************************************/
 /****************************************************************************/
 /****************************************************************************/
-LAUImage LAUImage::crop(unsigned int y, unsigned int x, unsigned int h, unsigned int w)
+LAUImage LAUImage::crop(unsigned int x, unsigned int y, unsigned int w, unsigned int h)
 {
     LAUImage image(h, w, depth(), profile(), data->xResolution, data->yResolution);
     image.setParentName(parentName());
