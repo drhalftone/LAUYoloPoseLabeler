@@ -83,7 +83,7 @@ public:
 
     void setDirty(bool state) { dirtyFlag = state; }
     bool isDirty() const { return(dirtyFlag); }
-    QString labelString(QRect *rect) const;
+    QString labelString(QRect rect) const;
 
 public slots:
     void onPaintEvent(QPainter *painter, QSize sze);

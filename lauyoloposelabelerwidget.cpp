@@ -244,22 +244,33 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             qApp->processEvents();
 
             // GET STRING THAT WE CAN WRITE TO LABELS FILE
-            QRect rect;
-            QString labelString = palette->labelString(&rect);
-
             int left = (image.width() - 1000)/2;
             int top = (image.height() - 1000)/2;
+
+            QRect rect(left, top, 1000, 1000);
+            QString labelString = palette->labelString(rect);
+
             image = image.crop(left, top, 1000, 1000).rescale(640,640);
 
             QString newFileString = QString("%1").arg(validImageCounter);
-            while (newFileString.length() < 5){
+            while (newFileString.length() < 9){
                 newFileString.prepend(QString("0"));
             }
 
             if (validImageCounter % 2){
                 image.save(QString("%1/%2.tif").arg(imageTrainDir.absolutePath()).arg(newFileString));
+                QFile file(QString("%1/%2.txt").arg(labelTrainDir.absolutePath()).arg(newFileString));
+                if (file.open(QIODevice::WriteOnly)){
+                    file.write(labelString.toLatin1());
+                    file.close();
+                }
             } else {
                 image.save(QString("%1/%2.tif").arg(imageValidDir.absolutePath()).arg(newFileString));
+                QFile file(QString("%1/%2.txt").arg(labelValidDir.absolutePath()).arg(newFileString));
+                if (file.open(QIODevice::WriteOnly)){
+                    file.write(labelString.toLatin1());
+                    file.close();
+                }
             }
         }
     }
@@ -474,7 +485,7 @@ QByteArray LAUYoloPoseLabelerPalette::xml() const
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-QString LAUYoloPoseLabelerPalette::labelString(QRect *rect) const
+QString LAUYoloPoseLabelerPalette::labelString(QRect rect) const
 {
     QList<float> fiducials;
 
@@ -488,22 +499,16 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect *rect) const
     int yMax = -1000;
 
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value());
-        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value());
-        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value());
-        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value());
+        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - rect.left());
+        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() - rect.left());
+        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - rect.top());
+        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() - rect.top());
     }
 
-    // PASS THE BOUNDING BOX BACK TO THE USER
-    rect->setLeft(xMin);
-    rect->setRight(xMax);
-    rect->setTop(yMin);
-    rect->setBottom(yMax);
-
-    double xLeft = (double)(xMin - 20) / (double)imageWidth;
-    double xWide = (double)(xMax - xMin + 40) / (double)imageWidth;
-    double yTop = (double)(yMin - 20) / (double)imageHeight;
-    double yTall = (double)(yMax - yMin + 40) / (double)imageHeight;
+    double xLeft = (double)(xMin - 20) / (double)rect.width();
+    double xWide = (double)(xMax - xMin + 40) / (double)rect.width();
+    double yTop = (double)(yMin - 20) / (double)rect.height();
+    double yTall = (double)(yMax - yMin + 40) / (double)rect.height();
 
     fiducials << (xLeft + xWide/2.0);
     fiducials << (yTop + yTall/2.0);
@@ -512,8 +517,8 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect *rect) const
 
     // EXTRACT THE FIDUCIAL COORDINATES
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        fiducials << (double)fiducialWidgets.at(n)->xSpinBox->value() / (double)imageWidth;
-        fiducials << (double)fiducialWidgets.at(n)->ySpinBox->value() / (double)imageHeight;
+        fiducials << (double)fiducialWidgets.at(n)->xSpinBox->value() / (double)rect.width();
+        fiducials << (double)fiducialWidgets.at(n)->ySpinBox->value() / (double)rect.height();
         if (fiducialWidgets.at(n)->zRadioButton->isChecked()){
             fiducials << 1.0;
         } else {
