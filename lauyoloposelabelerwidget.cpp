@@ -275,28 +275,36 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         }
     }
 
-//# Ultralytics YOLO 🚀, AGPL-3.0 license
-//# COCO8-pose dataset (first 8 images from COCO train2017) by Ultralytics
-//# Example usage: yolo train data=coco8-pose.yaml
-//# parent
-//# ├── ultralytics
-//# └── datasets
-//#     └── cowPose  ← downloads here (1 MB)
+    QFile yamlFile(QString("%1/%2.yaml").arg(outputDirectoryString).arg(outputDirectoryString.split("/").last()));
+    if (yamlFile.open(QIODevice::WriteOnly)){
+        QTextStream stream(&yamlFile);
+        stream << "# Ultralytics YOLO 🚀, AGPL-3.0 license\n";
+        stream << "# COCO8-pose dataset (first 8 images from COCO train2017) by Ultralytics\n";
+        stream << "\n";
+        stream << "# Example usage: yolo train data=coco8-pose.yaml\n";
+        stream << "# parent\n";
+        stream << "# ├── ultralytics\n";
+        stream << "# └── datasets\n";
+        stream << "#     └── cowPose  ← downloads here (1 MB)\n";
+        stream << "\n";
+        stream << "# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]\n";
+        stream << "path:  " << outputDirectoryString << " # dataset root dir\n";
+        stream << "train: images/train # train images (relative to 'path') 4 images\n";
+        stream << "val:   images/val # val images (relative to 'path') 4 images\n";
+        stream << "\n";
+        stream << "# Keypoints\n";
+        stream << "kpt_shape: [" << palette->fiducials() << ", 3]  # number of keypoints, number of dims (3 for x,y,visible)\n";
+        stream << "\n";
+        stream << "# Classes\n";
+        stream << "names:\n";
 
+        QStringList labels = palette->labels();
+        for (int n = 0; n < labels.count(); n++){
+            stream << "  " << n << ": " << labels.at(n) << "\n";
+        }
 
-//# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
-//path: ../datasets/cowPose  # dataset root dir
-//train: images/train  # train images (relative to 'path') 4 images
-//val: images/val  # val images (relative to 'path') 4 images
-
-//# Keypoints
-//kpt_shape: [5, 2]  # number of keypoints, number of dims (2 for x,y or 3 for x,y,visible)
-//flip_idx: [0, 1, 2, 3, 4]
-
-//# Classes
-//names:
-//  0: cow
-
+        yamlFile.close();
+    }
 }
 
 /*************************************************************************************/
@@ -503,6 +511,20 @@ QByteArray LAUYoloPoseLabelerPalette::xml() const
 
     // EXPORT THE XML BUFFER TO THE XMLPACKET FIELD OF THE TIFF IMAGE
     return(buffer.buffer());
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+QStringList LAUYoloPoseLabelerPalette::labels() const
+{
+    QStringList strings;
+    if (labelsComboBox){
+        for (int n = 0; n < labelsComboBox->count(); n++){
+            strings << labelsComboBox->itemText(n);
+        }
+    }
+    return(strings);
 }
 
 /*************************************************************************************/
