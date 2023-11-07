@@ -231,8 +231,19 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         labelValidDir.mkdir(labelValidDir.absolutePath());
     }
 
+    // CREATE A PROGRESS DIALOG SO USER CAN ABORT
+    QProgressDialog progressDialog(QString("Processing images..."), QString("Abort"), 0, inputImageStrings.count(), this, Qt::Sheet);
+    progressDialog.setModal(Qt::WindowModal);
+    progressDialog.show();
+
     int validImageCounter = 0;
     for (int n = 0; n < inputImageStrings.count(); n++){
+        if (progressDialog.wasCanceled()) {
+            break;
+        }
+        progressDialog.setValue(n);
+        qApp->processEvents();
+
         QString string = inputImageStrings.at(n);
         LAUImage image(string);
         if (image.xmlData().isEmpty() == false){
@@ -251,6 +262,7 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             QString labelString = palette->labelString(rect);
 
             image = image.crop(left, top, 1000, 1000).rescale(640,640);
+            image.setXmlData(palette->xml(rect, 0.640));
 
             QString newFileString = QString("%1").arg(validImageCounter);
             while (newFileString.length() < 9){
@@ -274,6 +286,7 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             }
         }
     }
+    progressDialog.setValue(inputImageStrings.count());
 
     QFile yamlFile(QString("%1/%2.yaml").arg(outputDirectoryString).arg(outputDirectoryString.split("/").last()));
     if (yamlFile.open(QIODevice::WriteOnly)){
@@ -480,7 +493,7 @@ LAUYoloPoseLabelerPalette::~LAUYoloPoseLabelerPalette()
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-QByteArray LAUYoloPoseLabelerPalette::xml() const
+QByteArray LAUYoloPoseLabelerPalette::xml(QRect roi, double scale) const
 {
     // CREATE THE XML DATA PACKET USING QT'S XML STREAM OBJECTS
     QBuffer buffer;
@@ -501,7 +514,10 @@ QByteArray LAUYoloPoseLabelerPalette::xml() const
 
     // WRITE THE FIDUCIALS TO XML
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        writer.writeTextElement(QString("fiducial"), QString("\"%1\",%2,%3,%4").arg(fiducialWidgets.at(n)->lineEdit->text()).arg(fiducialWidgets.at(n)->zRadioButton->isChecked()).arg(fiducialWidgets.at(n)->xSpinBox->value()).arg(fiducialWidgets.at(n)->ySpinBox->value()));
+        int x = qRound((fiducialWidgets.at(n)->xSpinBox->value() - roi.left()) * scale);
+        int y = qRound((fiducialWidgets.at(n)->ySpinBox->value() - roi.top()) * scale);
+        int z = fiducialWidgets.at(n)->zRadioButton->isChecked();
+        writer.writeTextElement(QString("fiducial"), QString("\"%1\",%2,%3,%4").arg(fiducialWidgets.at(n)->lineEdit->text()).arg(z).arg(x).arg(y));
     }
 
     // CLOSE OUT THE XML BUFFER
@@ -717,6 +733,7 @@ void LAUFiducialLabel::paintEvent(QPaintEvent *event)
     painter.begin(this);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.drawPixmap(QRect(0, 0, this->width(), this->height()), pixmap);
+    qDebug() << this->width() << this->height();
 
     emit emitPaint(&painter, this->size());
 
