@@ -4,15 +4,19 @@
 
 int main(int argc, char *argv[])
 {
-    QApplication a(argc, argv);
-    a.setOrganizationName(QString("Lau Consulting Inc"));
-    a.setOrganizationDomain(QString("drhalftone.com"));
-    a.setApplicationName(QString("LAUYoloPoseLabeler"));
+    QApplication app(argc, argv);
+    app.setQuitOnLastWindowClosed(false);
+    app.setOrganizationName(QString("Lau Consulting Inc"));
+    app.setOrganizationDomain(QString("drhalftone.com"));
+    app.setApplicationName(QString("Fly's Eye Interlacing Tool"));
+    app.setQuitOnLastWindowClosed(true);
 
     LAUYoloPoseLabelerWidget w;
+    w.onExportLabelsForYoloTraining();
+
     if (w.isValid()){
         w.show();
-        return a.exec();
+        return app.exec();
     }
     return -1;
 }

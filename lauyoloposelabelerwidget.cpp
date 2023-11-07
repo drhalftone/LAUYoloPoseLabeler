@@ -1,8 +1,10 @@
 #include "lauyoloposelabelerwidget.h"
 
+#include <QMenu>
 #include <QFile>
 #include <QLabel>
 #include <QDebug>
+#include <QAction>
 #include <QBuffer>
 #include <QPainter>
 #include <QGroupBox>
@@ -79,10 +81,11 @@ void LAUYoloPoseLabelerWidget::initialize()
     fiducials << "Genitalia";
 
     palette = new LAUYoloPoseLabelerPalette(labels, fiducials);
-    connect(label, SIGNAL(emitMouseClick(int,int)), palette, SLOT(onSpinBoxValueChanged(int,int)));
+    connect(label, SIGNAL(emitMousePressEvent(int,int)), palette, SLOT(onSpinBoxValueChanged(int,int)));
     connect(label, SIGNAL(emitPaint(QPainter*,QSize)), palette, SLOT(onPaintEvent(QPainter*,QSize)));
     connect(palette, SIGNAL(emitPreviousButtonClicked(bool)), this, SLOT(onPreviousButtonClicked(bool)));
     connect(palette, SIGNAL(emitNextButtonClicked(bool)), this, SLOT(onNextButtonClicked(bool)));
+    connect(label, SIGNAL(emitMouseRightClickEvent(QMouseEvent*)), this, SLOT(onContextMenuTriggered(QMouseEvent*)));
     box->layout()->addWidget(palette);
     box->setFixedWidth(380);
     this->layout()->addWidget(box);
@@ -150,6 +153,170 @@ void LAUYoloPoseLabelerWidget::onNextButtonClicked(bool state)
         label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
         this->setWindowTitle(QFileInfo(fileStrings.first()).fileName());
     }
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
+{
+    QSettings settings;
+    QString directory = settings.value("LAUYoloPoseLabelerWidget::inputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString inputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory to find labeled data..."), directory);
+    if (inputDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::inputDirectoryString", inputDirectoryString);
+    } else {
+        return;
+    }
+
+    // FIND ALL IMAGES INSIDE NESTED FOLDERS OF THE INPUT DIRECTORY
+    QStringList inputImageStrings;
+    QStringList directoryList;
+    QDir currentDirectory;
+
+    directoryList.append(inputDirectoryString);
+    while (directoryList.count() > 0) {
+        currentDirectory.setPath(directoryList.takeFirst());
+        QStringList list = currentDirectory.entryList();
+        while (list.count() > 0) {
+            QString item = list.takeFirst();
+            if (!item.startsWith(".")) {
+                QDir dir(currentDirectory.absolutePath().append(QString("/").append(item)));
+                if (dir.exists()) {
+                    directoryList.append(dir.absolutePath());
+                } else if (item.endsWith(".tif")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                } else if (item.endsWith(".tiff")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                }
+            }
+        }
+    }
+
+    directory = settings.value("LAUYoloPoseLabelerWidget::outputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString outputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory for outputing training data..."), directory);
+    if (outputDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::outputDirectoryString", outputDirectoryString);
+    } else {
+        return;
+    }
+
+    QDir imageDir(QString("%1/%2").arg(outputDirectoryString).arg("/images"));
+    if (imageDir.exists() == false){
+        imageDir.mkdir(imageDir.absolutePath());
+    }
+
+    QDir imageTrainDir(QString("%1/%2").arg(imageDir.absolutePath()).arg("/train"));
+    if (imageTrainDir.exists() == false){
+        imageTrainDir.mkdir(imageTrainDir.absolutePath());
+    }
+
+    QDir imageValidDir(QString("%1/%2").arg(imageDir.absolutePath()).arg("/val"));
+    if (imageValidDir.exists() == false){
+        imageValidDir.mkdir(imageValidDir.absolutePath());
+    }
+
+    QDir labelDir(QString("%1/%2").arg(outputDirectoryString).arg("/labels"));
+    if (labelDir.exists() == false){
+        labelDir.mkdir(labelDir.absolutePath());
+    }
+
+    QDir labelTrainDir(QString("%1/%2").arg(labelDir.absolutePath()).arg("/train"));
+    if (labelTrainDir.exists() == false){
+        labelTrainDir.mkdir(labelTrainDir.absolutePath());
+    }
+
+    QDir labelValidDir(QString("%1/%2").arg(labelDir.absolutePath()).arg("/val"));
+    if (labelValidDir.exists() == false){
+        labelValidDir.mkdir(labelValidDir.absolutePath());
+    }
+
+    int validImageCounter = 0;
+    for (int n = 0; n < inputImageStrings.count(); n++){
+        QString string = inputImageStrings.at(n);
+        LAUImage image(string);
+        if (image.xmlData().isEmpty() == false){
+            validImageCounter++;
+            palette->setXml(image.xmlData());
+            palette->setImageSize(image.width(), image.height());
+            label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+            this->setWindowTitle(image.filename());
+            qApp->processEvents();
+
+            // GET STRING THAT WE CAN WRITE TO LABELS FILE
+            int left = (image.width() - 1000)/2;
+            int top = (image.height() - 1000)/2;
+
+            QRect rect(left, top, 1000, 1000);
+            QString labelString = palette->labelString(rect);
+
+            image = image.crop(left, top, 1000, 1000).rescale(640,640);
+
+            QString newFileString = QString("%1").arg(validImageCounter);
+            while (newFileString.length() < 9){
+                newFileString.prepend(QString("0"));
+            }
+
+            if (validImageCounter % 2){
+                image.save(QString("%1/%2.tif").arg(imageTrainDir.absolutePath()).arg(newFileString));
+                QFile file(QString("%1/%2.txt").arg(labelTrainDir.absolutePath()).arg(newFileString));
+                if (file.open(QIODevice::WriteOnly)){
+                    file.write(labelString.toLatin1());
+                    file.close();
+                }
+            } else {
+                image.save(QString("%1/%2.tif").arg(imageValidDir.absolutePath()).arg(newFileString));
+                QFile file(QString("%1/%2.txt").arg(labelValidDir.absolutePath()).arg(newFileString));
+                if (file.open(QIODevice::WriteOnly)){
+                    file.write(labelString.toLatin1());
+                    file.close();
+                }
+            }
+        }
+    }
+
+    QFile yamlFile(QString("%1/%2.yaml").arg(outputDirectoryString).arg(outputDirectoryString.split("/").last()));
+    if (yamlFile.open(QIODevice::WriteOnly)){
+        QTextStream stream(&yamlFile);
+        stream << "# Ultralytics YOLO 🚀, AGPL-3.0 license\n";
+        stream << "# COCO8-pose dataset (first 8 images from COCO train2017) by Ultralytics\n";
+        stream << "\n";
+        stream << "# Example usage: yolo train data=coco8-pose.yaml\n";
+        stream << "# parent\n";
+        stream << "# ├── ultralytics\n";
+        stream << "# └── datasets\n";
+        stream << "#     └── cowPose  ← downloads here (1 MB)\n";
+        stream << "\n";
+        stream << "# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]\n";
+        stream << "path:  " << outputDirectoryString << " # dataset root dir\n";
+        stream << "train: images/train # train images (relative to 'path') 4 images\n";
+        stream << "val:   images/val # val images (relative to 'path') 4 images\n";
+        stream << "\n";
+        stream << "# Keypoints\n";
+        stream << "kpt_shape: [" << palette->fiducials() << ", 3]  # number of keypoints, number of dims (3 for x,y,visible)\n";
+        stream << "\n";
+        stream << "# Classes\n";
+        stream << "names:\n";
+
+        QStringList labels = palette->labels();
+        for (int n = 0; n < labels.count(); n++){
+            stream << "  " << n << ": " << labels.at(n) << "\n";
+        }
+
+        yamlFile.close();
+    }
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
+{
+    QMenu contextMenu(tr("Tools"), this);
+    QAction action1("Export Labels for Yolo Training", this);
+    connect(&action1, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloTraining()));
+    contextMenu.addAction(&action1);
+    contextMenu.exec(event->globalPos());
 }
 
 /*************************************************************************************/
@@ -313,7 +480,7 @@ LAUYoloPoseLabelerPalette::~LAUYoloPoseLabelerPalette()
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-QByteArray LAUYoloPoseLabelerPalette::xml()
+QByteArray LAUYoloPoseLabelerPalette::xml() const
 {
     // CREATE THE XML DATA PACKET USING QT'S XML STREAM OBJECTS
     QBuffer buffer;
@@ -344,6 +511,74 @@ QByteArray LAUYoloPoseLabelerPalette::xml()
 
     // EXPORT THE XML BUFFER TO THE XMLPACKET FIELD OF THE TIFF IMAGE
     return(buffer.buffer());
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+QStringList LAUYoloPoseLabelerPalette::labels() const
+{
+    QStringList strings;
+    if (labelsComboBox){
+        for (int n = 0; n < labelsComboBox->count(); n++){
+            strings << labelsComboBox->itemText(n);
+        }
+    }
+    return(strings);
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+QString LAUYoloPoseLabelerPalette::labelString(QRect rect) const
+{
+    QList<float> fiducials;
+
+    // EXTRACT THE LABEL INDEX
+    fiducials << (double)labelsComboBox->currentIndex();
+
+    // EXTRACT THE BOUNDING BOX
+    int xMin = 10000;
+    int xMax = -1000;
+    int yMin = 10000;
+    int yMax = -1000;
+
+    for (int n = 0; n < fiducialWidgets.count(); n++){
+        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - rect.left());
+        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() - rect.left());
+        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - rect.top());
+        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() - rect.top());
+    }
+
+    double xLeft = (double)(xMin - 20) / (double)rect.width();
+    double xWide = (double)(xMax - xMin + 40) / (double)rect.width();
+    double yTop = (double)(yMin - 20) / (double)rect.height();
+    double yTall = (double)(yMax - yMin + 40) / (double)rect.height();
+
+    fiducials << (xLeft + xWide/2.0);
+    fiducials << (yTop + yTall/2.0);
+    fiducials << xWide;
+    fiducials << yTall;
+
+    // EXTRACT THE FIDUCIAL COORDINATES
+    for (int n = 0; n < fiducialWidgets.count(); n++){
+        fiducials << (double)fiducialWidgets.at(n)->xSpinBox->value() / (double)rect.width();
+        fiducials << (double)fiducialWidgets.at(n)->ySpinBox->value() / (double)rect.height();
+        if (fiducialWidgets.at(n)->zRadioButton->isChecked()){
+            fiducials << 1.0;
+        } else {
+            fiducials << 0.0;
+        }
+    }
+
+    QString string;
+    string.append(QString("%1 ").arg((int)qRound(fiducials.takeFirst())));
+    while (fiducials.count() > 0){
+        string.append(QString("%1 ").arg(fiducials.takeFirst(), 0, 'f', 6));
+    }
+    string.chop(1);
+
+    return(string);
 }
 
 /*************************************************************************************/
@@ -497,7 +732,17 @@ void LAUFiducialLabel::mouseDoubleClickEvent(QMouseEvent *event)
         int x = qRound(event->pos().x() / (double)this->width() * pixmap.width());
         int y = qRound(event->pos().y() / (double)this->height() * pixmap.height());
 
-        emit emitMouseClick(x, y);
+        emit emitMousePressEvent(x, y);
         update();
+    }
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+void LAUFiducialLabel::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::RightButton) {
+        emit emitMouseRightClickEvent(event);
     }
 }
