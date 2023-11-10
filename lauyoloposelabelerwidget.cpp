@@ -231,6 +231,13 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         labelValidDir.mkdir(labelValidDir.absolutePath());
     }
 
+    // SAVE THE CURRENT IMAGE ON SCREEN IF DIRTY
+    if (palette->isDirty()){
+        image.setXmlData(palette->xml());
+        image.save(fileStrings.first());
+        palette->setDirty(false);
+    }
+
     // CREATE A PROGRESS DIALOG SO USER CAN ABORT
     QProgressDialog progressDialog(QString("Processing images..."), QString("Abort"), 0, inputImageStrings.count(), this, Qt::Sheet);
     progressDialog.setModal(Qt::WindowModal);
@@ -259,9 +266,9 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             int top = (image.height() - 1000)/2;
 
             QRect rect(left, top, 1000, 1000);
-            QString labelString = palette->labelString(rect);
+            QString labelString = palette->labelString(&rect);
 
-            image = image.crop(left, top, 1000, 1000).rescale(640,640);
+            image = image.crop(rect.left(), rect.top(), rect.width(), rect.height()).rescale(640,640);
             image.setXmlData(palette->xml(rect, 0.640));
 
             QString newFileString = QString("%1").arg(validImageCounter);
@@ -317,6 +324,15 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         }
 
         yamlFile.close();
+    }
+
+    // RESET THE DISPLAY TO SHOW THE IMAGE THAT WAS THERE AT THE START OF THIS METHOD
+    if (fileStrings.count() > 0){
+        image = LAUImage(fileStrings.first());
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
+        label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+        this->setWindowTitle(QFileInfo(fileStrings.first()).fileName());
     }
 }
 
@@ -546,7 +562,7 @@ QStringList LAUYoloPoseLabelerPalette::labels() const
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-QString LAUYoloPoseLabelerPalette::labelString(QRect rect) const
+QString LAUYoloPoseLabelerPalette::labelString(QRect *rect) const
 {
     QList<float> fiducials;
 
@@ -560,16 +576,42 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect rect) const
     int yMax = -1000;
 
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - rect.left());
-        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() - rect.left());
-        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - rect.top());
-        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() - rect.top());
+        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - 40);
+        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() + 40);
+        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - 40);
+        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() + 40);
     }
 
-    double xLeft = (double)(xMin - 20) / (double)rect.width();
-    double xWide = (double)(xMax - xMin + 40) / (double)rect.width();
-    double yTop = (double)(yMin - 20) / (double)rect.height();
-    double yTall = (double)(yMax - yMin + 40) / (double)rect.height();
+    // MOVE REGION OF INTEREST TO KEEP ALL FIDUCIALS INSIDE BOX
+    if (xMin < rect->left()){
+        rect->moveLeft(qMax(0, xMin));
+    } else if (xMax > rect->right()){
+        rect->moveRight(qMin(xMax, imageWidth-1));
+    }
+
+    if (yMin < rect->top()){
+        rect->moveTop(qMax(0, yMin));
+    } else if (yMax > rect->bottom()){
+        rect->moveBottom(qMin(yMax, imageHeight-1));
+    }
+
+    // RECALCULATE LIMITS NOW THAT WE'VE CENTERED THE ROI
+    xMin = 10000;
+    xMax = -1000;
+    yMin = 10000;
+    yMax = -1000;
+
+    for (int n = 0; n < fiducialWidgets.count(); n++){
+        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - rect->left());
+        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() - rect->left());
+        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - rect->top());
+        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() - rect->top());
+    }
+
+    double xLeft = (double)(xMin - 20) / (double)rect->width();
+    double xWide = (double)(xMax - xMin + 40) / (double)rect->width();
+    double yTop = (double)(yMin - 20) / (double)rect->height();
+    double yTall = (double)(yMax - yMin + 40) / (double)rect->height();
 
     fiducials << (xLeft + xWide/2.0);
     fiducials << (yTop + yTall/2.0);
@@ -578,13 +620,28 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect rect) const
 
     // EXTRACT THE FIDUCIAL COORDINATES
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        fiducials << (double)fiducialWidgets.at(n)->xSpinBox->value() / (double)rect.width();
-        fiducials << (double)fiducialWidgets.at(n)->ySpinBox->value() / (double)rect.height();
+        fiducials << (double)(fiducialWidgets.at(n)->xSpinBox->value() - rect->left()) / (double)rect->width();
+        fiducials << (double)(fiducialWidgets.at(n)->ySpinBox->value() - rect->top()) / (double)rect->height();
         if (fiducialWidgets.at(n)->zRadioButton->isChecked()){
             fiducials << 1.0;
         } else {
             fiducials << 0.0;
         }
+    }
+
+    bool flag = false;
+    for (int n = 1; n < fiducialWidgets.count(); n++){
+        if (fiducials.at(n) > 1.0){
+            flag = true;
+            fiducials.replace(n, 0.9999);
+        } else if (fiducials.at(n) < 0.0){
+            flag = true;
+            fiducials.replace(n, 0.0001);
+        }
+    }
+
+    if (flag){
+        qDebug() << fiducials;
     }
 
     QString string;
@@ -733,8 +790,6 @@ void LAUFiducialLabel::paintEvent(QPaintEvent *event)
     painter.begin(this);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.drawPixmap(QRect(0, 0, this->width(), this->height()), pixmap);
-    qDebug() << this->width() << this->height();
-
     emit emitPaint(&painter, this->size());
 
     painter.end();

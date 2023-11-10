@@ -83,7 +83,7 @@ public:
 
     void setDirty(bool state) { dirtyFlag = state; }
     bool isDirty() const { return(dirtyFlag); }
-    QString labelString(QRect rect) const;
+    QString labelString(QRect *rect) const;
     QStringList labels() const;
     int fiducials() const { return(fiducialWidgets.count()); }
 
