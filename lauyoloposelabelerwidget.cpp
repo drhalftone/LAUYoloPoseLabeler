@@ -339,6 +339,67 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
+void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
+{
+    // LET THE USER SELECT THE DIRECTORY FOR LOADING IMAGES
+    QSettings settings;
+    QString directory = settings.value("LAUYoloPoseLabelerWidget::outputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString inputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory to find training data..."), directory);
+    if (inputDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::outputDirectoryString", inputDirectoryString);
+    } else {
+        return;
+    }
+
+    // LOAD A TRAINED MDOEL FROM DISK
+    LAUYoloPoseObject poseNetwork((QString()));
+
+    // FIND ALL IMAGES INSIDE NESTED FOLDERS OF THE INPUT DIRECTORY
+    QStringList inputImageStrings;
+    QStringList directoryList;
+    QDir currentDirectory;
+
+    directoryList.append(inputDirectoryString);
+    while (directoryList.count() > 0) {
+        currentDirectory.setPath(directoryList.takeFirst());
+        QStringList list = currentDirectory.entryList();
+        while (list.count() > 0) {
+            QString item = list.takeFirst();
+            if (!item.startsWith(".")) {
+                QDir dir(currentDirectory.absolutePath().append(QString("/").append(item)));
+                if (dir.exists()) {
+                    directoryList.append(dir.absolutePath());
+                } else if (item.endsWith(".tif")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                } else if (item.endsWith(".tiff")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                }
+            }
+        }
+    }
+
+    for (int n = 0; n < inputImageStrings.count(); n++){
+        QString string = inputImageStrings.at(n);
+        LAUImage image(string);
+        if (image.xmlData().isEmpty() == false){
+            palette->setXml(image.xmlData());
+            palette->setImageSize(image.width(), image.height());
+            label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+            this->setWindowTitle(image.filename());
+            qApp->processEvents();
+
+            float confidence = 0.0f;
+            QList<LAUMemoryObject> objects = poseNetwork.process(image);
+            if (objects.isEmpty() == false){
+                QList<QPointF> points = poseNetwork.points(&confidence);
+            }
+        }
+    }
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
 {
     QMenu contextMenu(tr("Tools"), this);
