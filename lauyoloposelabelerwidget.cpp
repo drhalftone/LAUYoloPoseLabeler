@@ -1,5 +1,4 @@
 #include "lauyoloposelabelerwidget.h"
-#include "laudeepnetworkobject.h"
 
 #include <QMenu>
 #include <QFile>
@@ -159,67 +158,6 @@ void LAUYoloPoseLabelerWidget::onNextButtonClicked(bool state)
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
-{
-    // LET THE USER SELECT THE DIRECTORY FOR LOADING IMAGES
-    QSettings settings;
-    QString directory = settings.value("LAUYoloPoseLabelerWidget::outputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
-    QString inputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory to find training data..."), directory);
-    if (inputDirectoryString.isEmpty() == false) {
-        settings.setValue("LAUYoloPoseLabelerWidget::outputDirectoryString", inputDirectoryString);
-    } else {
-        return;
-    }
-
-    // LOAD A TRAINED MDOEL FROM DISK
-    LAUYoloPoseObject poseNetwork((QString()));
-
-    // FIND ALL IMAGES INSIDE NESTED FOLDERS OF THE INPUT DIRECTORY
-    QStringList inputImageStrings;
-    QStringList directoryList;
-    QDir currentDirectory;
-
-    directoryList.append(inputDirectoryString);
-    while (directoryList.count() > 0) {
-        currentDirectory.setPath(directoryList.takeFirst());
-        QStringList list = currentDirectory.entryList();
-        while (list.count() > 0) {
-            QString item = list.takeFirst();
-            if (!item.startsWith(".")) {
-                QDir dir(currentDirectory.absolutePath().append(QString("/").append(item)));
-                if (dir.exists()) {
-                    directoryList.append(dir.absolutePath());
-                } else if (item.endsWith(".tif")) {
-                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
-                } else if (item.endsWith(".tiff")) {
-                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
-                }
-            }
-        }
-    }
-
-    for (int n = 0; n < inputImageStrings.count(); n++){
-        QString string = inputImageStrings.at(n);
-        LAUImage image(string);
-        if (image.xmlData().isEmpty() == false){
-            palette->setXml(image.xmlData());
-            palette->setImageSize(image.width(), image.height());
-            label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
-            this->setWindowTitle(image.filename());
-            qApp->processEvents();
-
-            float confidence = 0.0f;
-            QList<LAUMemoryObject> objects = poseNetwork.process(image);
-            if (objects.isEmpty() == false){
-                QList<QPointF> points = poseNetwork.points(&confidence);
-            }
-        }
-    }
-}
-
-/*************************************************************************************/
-/*************************************************************************************/
-/*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
 {
     QSettings settings;
@@ -293,8 +231,26 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         labelValidDir.mkdir(labelValidDir.absolutePath());
     }
 
+    // SAVE THE CURRENT IMAGE ON SCREEN IF DIRTY
+    if (palette->isDirty()){
+        image.setXmlData(palette->xml());
+        image.save(fileStrings.first());
+        palette->setDirty(false);
+    }
+
+    // CREATE A PROGRESS DIALOG SO USER CAN ABORT
+    QProgressDialog progressDialog(QString("Processing images..."), QString("Abort"), 0, inputImageStrings.count(), this, Qt::Sheet);
+    progressDialog.setModal(Qt::WindowModal);
+    progressDialog.show();
+
     int validImageCounter = 0;
     for (int n = 0; n < inputImageStrings.count(); n++){
+        if (progressDialog.wasCanceled()) {
+            break;
+        }
+        progressDialog.setValue(n);
+        qApp->processEvents();
+
         QString string = inputImageStrings.at(n);
         LAUImage image(string);
         if (image.xmlData().isEmpty() == false){
@@ -310,9 +266,10 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             int top = (image.height() - 1000)/2;
 
             QRect rect(left, top, 1000, 1000);
-            QString labelString = palette->labelString(rect);
+            QString labelString = palette->labelString(&rect);
 
-            image = image.crop(left, top, 1000, 1000).rescale(640,640);
+            image = image.crop(rect.left(), rect.top(), rect.width(), rect.height()).rescale(640,640);
+            image.setXmlData(palette->xml(rect, 0.640));
 
             QString newFileString = QString("%1").arg(validImageCounter);
             while (newFileString.length() < 9){
@@ -336,6 +293,47 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             }
         }
     }
+    progressDialog.setValue(inputImageStrings.count());
+
+    QFile yamlFile(QString("%1/%2.yaml").arg(outputDirectoryString).arg(outputDirectoryString.split("/").last()));
+    if (yamlFile.open(QIODevice::WriteOnly)){
+        QTextStream stream(&yamlFile);
+        stream << "# Ultralytics YOLO 🚀, AGPL-3.0 license\n";
+        stream << "# COCO8-pose dataset (first 8 images from COCO train2017) by Ultralytics\n";
+        stream << "\n";
+        stream << "# Example usage: yolo train data=coco8-pose.yaml\n";
+        stream << "# parent\n";
+        stream << "# ├── ultralytics\n";
+        stream << "# └── datasets\n";
+        stream << "#     └── cowPose  ← downloads here (1 MB)\n";
+        stream << "\n";
+        stream << "# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]\n";
+        stream << "path:  " << outputDirectoryString << " # dataset root dir\n";
+        stream << "train: images/train # train images (relative to 'path') 4 images\n";
+        stream << "val:   images/val # val images (relative to 'path') 4 images\n";
+        stream << "\n";
+        stream << "# Keypoints\n";
+        stream << "kpt_shape: [" << palette->fiducials() << ", 3]  # number of keypoints, number of dims (3 for x,y,visible)\n";
+        stream << "\n";
+        stream << "# Classes\n";
+        stream << "names:\n";
+
+        QStringList labels = palette->labels();
+        for (int n = 0; n < labels.count(); n++){
+            stream << "  " << n << ": " << labels.at(n) << "\n";
+        }
+
+        yamlFile.close();
+    }
+
+    // RESET THE DISPLAY TO SHOW THE IMAGE THAT WAS THERE AT THE START OF THIS METHOD
+    if (fileStrings.count() > 0){
+        image = LAUImage(fileStrings.first());
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
+        label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+        this->setWindowTitle(QFileInfo(fileStrings.first()).fileName());
+    }
 }
 
 /*************************************************************************************/
@@ -343,20 +341,10 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
 /*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
 {
-    // CREATE A CONTEXT MENU
     QMenu contextMenu(tr("Tools"), this);
-
-    // ADD AN ACTION FOR EXPORTING LABELED DATA FOR TRAINING
     QAction action1("Export Labels for Yolo Training", this);
     connect(&action1, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloTraining()));
     contextMenu.addAction(&action1);
-
-    // ADD AN ACTION FOR PROCESSING TRAINING DATA WITH A TRAINED POSE MODEL
-    QAction action2("Process with Trained Pose Model", this);
-    connect(&action2, SIGNAL(triggered()), this, SLOT(onLabelImagesFromDisk()));
-    contextMenu.addAction(&action2);
-
-    // DISPLAY THE CONTEXT MENU TO THE USER
     contextMenu.exec(event->globalPos());
 }
 
@@ -521,7 +509,7 @@ LAUYoloPoseLabelerPalette::~LAUYoloPoseLabelerPalette()
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-QByteArray LAUYoloPoseLabelerPalette::xml() const
+QByteArray LAUYoloPoseLabelerPalette::xml(QRect roi, double scale) const
 {
     // CREATE THE XML DATA PACKET USING QT'S XML STREAM OBJECTS
     QBuffer buffer;
@@ -542,7 +530,10 @@ QByteArray LAUYoloPoseLabelerPalette::xml() const
 
     // WRITE THE FIDUCIALS TO XML
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        writer.writeTextElement(QString("fiducial"), QString("\"%1\",%2,%3,%4").arg(fiducialWidgets.at(n)->lineEdit->text()).arg(fiducialWidgets.at(n)->zRadioButton->isChecked()).arg(fiducialWidgets.at(n)->xSpinBox->value()).arg(fiducialWidgets.at(n)->ySpinBox->value()));
+        int x = qRound((fiducialWidgets.at(n)->xSpinBox->value() - roi.left()) * scale);
+        int y = qRound((fiducialWidgets.at(n)->ySpinBox->value() - roi.top()) * scale);
+        int z = fiducialWidgets.at(n)->zRadioButton->isChecked();
+        writer.writeTextElement(QString("fiducial"), QString("\"%1\",%2,%3,%4").arg(fiducialWidgets.at(n)->lineEdit->text()).arg(z).arg(x).arg(y));
     }
 
     // CLOSE OUT THE XML BUFFER
@@ -571,7 +562,7 @@ QStringList LAUYoloPoseLabelerPalette::labels() const
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-QString LAUYoloPoseLabelerPalette::labelString(QRect rect) const
+QString LAUYoloPoseLabelerPalette::labelString(QRect *rect) const
 {
     QList<float> fiducials;
 
@@ -585,16 +576,42 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect rect) const
     int yMax = -1000;
 
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - rect.left());
-        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() - rect.left());
-        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - rect.top());
-        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() - rect.top());
+        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - 40);
+        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() + 40);
+        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - 40);
+        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() + 40);
     }
 
-    double xLeft = (double)(xMin - 20) / (double)rect.width();
-    double xWide = (double)(xMax - xMin + 40) / (double)rect.width();
-    double yTop = (double)(yMin - 20) / (double)rect.height();
-    double yTall = (double)(yMax - yMin + 40) / (double)rect.height();
+    // MOVE REGION OF INTEREST TO KEEP ALL FIDUCIALS INSIDE BOX
+    if (xMin < rect->left()){
+        rect->moveLeft(qMax(0, xMin));
+    } else if (xMax > rect->right()){
+        rect->moveRight(qMin(xMax, imageWidth-1));
+    }
+
+    if (yMin < rect->top()){
+        rect->moveTop(qMax(0, yMin));
+    } else if (yMax > rect->bottom()){
+        rect->moveBottom(qMin(yMax, imageHeight-1));
+    }
+
+    // RECALCULATE LIMITS NOW THAT WE'VE CENTERED THE ROI
+    xMin = 10000;
+    xMax = -1000;
+    yMin = 10000;
+    yMax = -1000;
+
+    for (int n = 0; n < fiducialWidgets.count(); n++){
+        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - rect->left());
+        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() - rect->left());
+        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - rect->top());
+        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() - rect->top());
+    }
+
+    double xLeft = (double)(xMin - 20) / (double)rect->width();
+    double xWide = (double)(xMax - xMin + 40) / (double)rect->width();
+    double yTop = (double)(yMin - 20) / (double)rect->height();
+    double yTall = (double)(yMax - yMin + 40) / (double)rect->height();
 
     fiducials << (xLeft + xWide/2.0);
     fiducials << (yTop + yTall/2.0);
@@ -603,13 +620,28 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect rect) const
 
     // EXTRACT THE FIDUCIAL COORDINATES
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        fiducials << (double)fiducialWidgets.at(n)->xSpinBox->value() / (double)rect.width();
-        fiducials << (double)fiducialWidgets.at(n)->ySpinBox->value() / (double)rect.height();
+        fiducials << (double)(fiducialWidgets.at(n)->xSpinBox->value() - rect->left()) / (double)rect->width();
+        fiducials << (double)(fiducialWidgets.at(n)->ySpinBox->value() - rect->top()) / (double)rect->height();
         if (fiducialWidgets.at(n)->zRadioButton->isChecked()){
             fiducials << 1.0;
         } else {
             fiducials << 0.0;
         }
+    }
+
+    bool flag = false;
+    for (int n = 1; n < fiducialWidgets.count(); n++){
+        if (fiducials.at(n) > 1.0){
+            flag = true;
+            fiducials.replace(n, 0.9999);
+        } else if (fiducials.at(n) < 0.0){
+            flag = true;
+            fiducials.replace(n, 0.0001);
+        }
+    }
+
+    if (flag){
+        qDebug() << fiducials;
     }
 
     QString string;
@@ -758,7 +790,6 @@ void LAUFiducialLabel::paintEvent(QPaintEvent *event)
     painter.begin(this);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.drawPixmap(QRect(0, 0, this->width(), this->height()), pixmap);
-
     emit emitPaint(&painter, this->size());
 
     painter.end();

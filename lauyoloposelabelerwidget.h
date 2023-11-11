@@ -73,7 +73,7 @@ public:
     LAUYoloPoseLabelerPalette(QStringList labels = QStringList(), QStringList fiducials = QStringList(), QWidget *parent = nullptr);
     ~LAUYoloPoseLabelerPalette();
 
-    QByteArray xml() const;
+    QByteArray xml(QRect roi = QRect(0,0,0,0), double scale = 1.0) const;
     void setXml(QByteArray string);
     void setImageSize(int x, int y)
     {
@@ -83,7 +83,7 @@ public:
 
     void setDirty(bool state) { dirtyFlag = state; }
     bool isDirty() const { return(dirtyFlag); }
-    QString labelString(QRect rect) const;
+    QString labelString(QRect *rect) const;
     QStringList labels() const;
     int fiducials() const { return(fiducialWidgets.count()); }
 

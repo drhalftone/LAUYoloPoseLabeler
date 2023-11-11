@@ -27,7 +27,7 @@ qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
-unix {
+unix:macx {
     QMAKE_CXXFLAGS += -msse2 -msse3 -mssse3 -msse4.1
     QMAKE_CXXFLAGS_WARN_ON += -Wno-reorder
     INCLUDEPATH    += /usr/local/include/Tiff /opt/intel/ipp/include
@@ -62,3 +62,6 @@ win32 {
     DEPENDPATH  += $$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/include)
     LIBS +=      -L$$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/lib/intel64) -lippi -lipps -lippcore
 }
+
+# security find-identity
+#~/Qt/5.15.2/clang_64/bin/macdeployqt 'LAU3DVideoRecorder.app' -codesign='Developer ID Application: Daniel Lau (UJ5B8V852W)' -dmg -appstore-compliant -always-overwrite

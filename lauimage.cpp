@@ -425,7 +425,6 @@ bool LAUImage::save(TIFF *currentTiffDirectory)
     // WRITE XML DATA IF IT EXISTS
     QByteArray xmlByteArray = xmlData();
     if (xmlByteArray.length() > 0) {
-        qDebug() << xmlByteArray;
         TIFFSetField(currentTiffDirectory, TIFFTAG_XMLPACKET, xmlByteArray.length(), xmlByteArray.data());
     }
 
