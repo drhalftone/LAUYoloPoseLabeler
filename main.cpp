@@ -12,8 +12,6 @@ int main(int argc, char *argv[])
     app.setQuitOnLastWindowClosed(true);
 
     LAUYoloPoseLabelerWidget w;
-    w.onExportLabelsForYoloTraining();
-
     if (w.isValid()){
         w.show();
         return app.exec();

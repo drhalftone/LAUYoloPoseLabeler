@@ -1,6 +1,7 @@
-QT       += core gui widgets
-
 CONFIG += c++11
+CONFIG += opencv
+
+QT       += core gui widgets
 
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
@@ -10,11 +11,15 @@ SOURCES += \
     main.cpp \
     lauimage.cpp \
     laucmswidget.cpp \
+    laumemoryobject.cpp \
+    laudeepnetworkobject.cpp \
     lauyoloposelabelerwidget.cpp
 
 HEADERS += \
     lauimage.h \
     laucmswidget.h \
+    laumemoryobject.h \
+    laudeepnetworkobject.h \
     lauyoloposelabelerwidget.h
 
 # Default rules for deployment.
@@ -39,12 +44,12 @@ unix {
             /opt/intel/ipp/lib/libippch.a \
             /opt/intel/lib/libirc.a
 
-    flyseyelens {
-        ICON    = FlysEye/hexLensIcon.icns
-    }
-
-    lenticularlens {
-        ICON    = FlysEye/LauLensIcon.icns
+    opencv {
+        DEFINES       += USE_OPENCV ENABLEDEEPNETWORK
+        INCLUDEPATH   += /usr/local/opt/opencv/include/opencv4
+        DEPENDPATH    += /usr/local/opt/opencv/include/opencv4
+        LIBS          += -L/usr/local/opt/opencv/lib -lopencv_core -lopencv_objdetect -lopencv_imgproc \
+                          -lopencv_calib3d -lopencv_highgui -lopencv_ml -lopencv_dnn -lopencv_imgcodecs
     }
 }
 

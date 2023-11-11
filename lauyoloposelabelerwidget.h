@@ -150,6 +150,7 @@ public:
 public slots:
     void onContextMenuTriggered(QMouseEvent *event);
     void onExportLabelsForYoloTraining();
+    void onLabelImagesFromDisk();
     void onPreviousButtonClicked(bool state);
     void onNextButtonClicked(bool state);
 

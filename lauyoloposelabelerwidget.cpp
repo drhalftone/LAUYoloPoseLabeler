@@ -1,4 +1,5 @@
 #include "lauyoloposelabelerwidget.h"
+#include "laudeepnetworkobject.h"
 
 #include <QMenu>
 #include <QFile>
@@ -158,6 +159,67 @@ void LAUYoloPoseLabelerWidget::onNextButtonClicked(bool state)
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
+void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
+{
+    // LET THE USER SELECT THE DIRECTORY FOR LOADING IMAGES
+    QSettings settings;
+    QString directory = settings.value("LAUYoloPoseLabelerWidget::outputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString inputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory to find training data..."), directory);
+    if (inputDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::outputDirectoryString", inputDirectoryString);
+    } else {
+        return;
+    }
+
+    // LOAD A TRAINED MDOEL FROM DISK
+    LAUYoloPoseObject poseNetwork((QString()));
+
+    // FIND ALL IMAGES INSIDE NESTED FOLDERS OF THE INPUT DIRECTORY
+    QStringList inputImageStrings;
+    QStringList directoryList;
+    QDir currentDirectory;
+
+    directoryList.append(inputDirectoryString);
+    while (directoryList.count() > 0) {
+        currentDirectory.setPath(directoryList.takeFirst());
+        QStringList list = currentDirectory.entryList();
+        while (list.count() > 0) {
+            QString item = list.takeFirst();
+            if (!item.startsWith(".")) {
+                QDir dir(currentDirectory.absolutePath().append(QString("/").append(item)));
+                if (dir.exists()) {
+                    directoryList.append(dir.absolutePath());
+                } else if (item.endsWith(".tif")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                } else if (item.endsWith(".tiff")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                }
+            }
+        }
+    }
+
+    for (int n = 0; n < inputImageStrings.count(); n++){
+        QString string = inputImageStrings.at(n);
+        LAUImage image(string);
+        if (image.xmlData().isEmpty() == false){
+            palette->setXml(image.xmlData());
+            palette->setImageSize(image.width(), image.height());
+            label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+            this->setWindowTitle(image.filename());
+            qApp->processEvents();
+
+            float confidence = 0.0f;
+            QList<LAUMemoryObject> objects = poseNetwork.process(image);
+            if (objects.isEmpty() == false){
+                QList<QPointF> points = poseNetwork.points(&confidence);
+            }
+        }
+    }
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
 {
     QSettings settings;
@@ -274,37 +336,6 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             }
         }
     }
-
-    QFile yamlFile(QString("%1/%2.yaml").arg(outputDirectoryString).arg(outputDirectoryString.split("/").last()));
-    if (yamlFile.open(QIODevice::WriteOnly)){
-        QTextStream stream(&yamlFile);
-        stream << "# Ultralytics YOLO 🚀, AGPL-3.0 license\n";
-        stream << "# COCO8-pose dataset (first 8 images from COCO train2017) by Ultralytics\n";
-        stream << "\n";
-        stream << "# Example usage: yolo train data=coco8-pose.yaml\n";
-        stream << "# parent\n";
-        stream << "# ├── ultralytics\n";
-        stream << "# └── datasets\n";
-        stream << "#     └── cowPose  ← downloads here (1 MB)\n";
-        stream << "\n";
-        stream << "# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]\n";
-        stream << "path:  " << outputDirectoryString << " # dataset root dir\n";
-        stream << "train: images/train # train images (relative to 'path') 4 images\n";
-        stream << "val:   images/val # val images (relative to 'path') 4 images\n";
-        stream << "\n";
-        stream << "# Keypoints\n";
-        stream << "kpt_shape: [" << palette->fiducials() << ", 3]  # number of keypoints, number of dims (3 for x,y,visible)\n";
-        stream << "\n";
-        stream << "# Classes\n";
-        stream << "names:\n";
-
-        QStringList labels = palette->labels();
-        for (int n = 0; n < labels.count(); n++){
-            stream << "  " << n << ": " << labels.at(n) << "\n";
-        }
-
-        yamlFile.close();
-    }
 }
 
 /*************************************************************************************/
@@ -312,10 +343,20 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
 /*************************************************************************************/
 void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
 {
+    // CREATE A CONTEXT MENU
     QMenu contextMenu(tr("Tools"), this);
+
+    // ADD AN ACTION FOR EXPORTING LABELED DATA FOR TRAINING
     QAction action1("Export Labels for Yolo Training", this);
     connect(&action1, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloTraining()));
     contextMenu.addAction(&action1);
+
+    // ADD AN ACTION FOR PROCESSING TRAINING DATA WITH A TRAINED POSE MODEL
+    QAction action2("Process with Trained Pose Model", this);
+    connect(&action2, SIGNAL(triggered()), this, SLOT(onLabelImagesFromDisk()));
+    contextMenu.addAction(&action2);
+
+    // DISPLAY THE CONTEXT MENU TO THE USER
     contextMenu.exec(event->globalPos());
 }
 
