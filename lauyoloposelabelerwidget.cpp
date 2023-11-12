@@ -1,4 +1,5 @@
 #include "lauyoloposelabelerwidget.h"
+#include "laudeepnetworkobject.h"
 
 #include <QMenu>
 #include <QFile>
