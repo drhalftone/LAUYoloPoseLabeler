@@ -245,6 +245,7 @@ public:
     LAUImage convertToUShort();
     LAUImage convertToFloat();
     LAUImage convertToBinary(QString method = QString("white noise"));
+    LAUImage convertToRGB();
     LAUImage invert();
     LAUImage extractChannel(unsigned int channel);
     LAUImage rescale(unsigned int rows, unsigned int cols, Qt::AspectRatioMode aspectRatioMode = Qt::IgnoreAspectRatio, IppiInterpolationType interpolation = ippNearest);

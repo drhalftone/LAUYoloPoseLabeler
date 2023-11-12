@@ -1107,6 +1107,31 @@ LAUImage LAUImage::superimpose(LAUImage imageFG, LAUImage imageBG)
 /****************************************************************************/
 /****************************************************************************/
 /****************************************************************************/
+LAUImage LAUImage::convertToRGB()
+{
+    cmsCIEXYZ D65_XYZ = {0.95047, 1.0, 1.08883 };
+    cmsCIExyY D65;
+    cmsXYZ2xyY(&D65, &D65_XYZ);
+
+    cmsToneCurve *linear = cmsBuildGamma(NULL, 1.0);
+    cmsToneCurve *linrgb[3] = {linear,linear,linear};
+    cmsCIExyYTRIPLE primaries = {
+        {0.64, 0.33, 1.0},
+        {0.30, 0.60, 1.0},
+        {0.15, 0.06, 1.0}
+    };
+
+    cmsFloat64Number P[5] = { 2.4, 1. / 1.055, 0.055 / 1.055, 1. / 12.92, 0.04045 };
+    cmsToneCurve *srgb = cmsBuildParametricToneCurve(NULL, 4, P);
+    cmsToneCurve *srgbcurve[3] = {srgb,srgb,srgb};
+    cmsHPROFILE hsRGB = cmsCreateRGBProfile(&D65, &primaries, srgbcurve);
+
+    return(this->convertToProfile(hsRGB));
+}
+
+/****************************************************************************/
+/****************************************************************************/
+/****************************************************************************/
 LAUImage LAUImage::convertToProfile(cmsHPROFILE newProfile)
 {
     // CREATE NEW SCAN IMAGE WITH THE INCOMING PROFILE
