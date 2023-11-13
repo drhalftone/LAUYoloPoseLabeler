@@ -15,6 +15,29 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 
+typedef struct {
+    float confidenceA;
+    float confidenceB;
+    QString string;
+    QString xml;
+} ImageWithConfidencePacket;
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+bool ImageWithConfidencePacket_confidenceLessThanA(const ImageWithConfidencePacket &s1, const ImageWithConfidencePacket &s2)
+{
+    return (s1.confidenceA < s2.confidenceA);
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+bool ImageWithConfidencePacket_confidenceLessThanB(const ImageWithConfidencePacket &s1, const ImageWithConfidencePacket &s2)
+{
+    return (s1.confidenceB < s2.confidenceB);
+}
+
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
@@ -360,6 +383,13 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
     QStringList directoryList;
     QDir currentDirectory;
 
+    // SAVE THE CURRENT IMAGE ON SCREEN IF DIRTY
+    if (palette->isDirty()){
+        image.setXmlData(palette->xml());
+        image.save(fileStrings.first());
+        palette->setDirty(false);
+    }
+
     directoryList.append(inputDirectoryString);
     while (directoryList.count() > 0) {
         currentDirectory.setPath(directoryList.takeFirst());
@@ -379,22 +409,115 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
         }
     }
 
+    // KEEP A LIST OF IMAGE FILES AND THEIR CORRESPONDING CONFIDENCES
+    QList<ImageWithConfidencePacket> imagePackets;
+
     for (int n = 0; n < inputImageStrings.count(); n++){
         QString string = inputImageStrings.at(n);
         LAUImage image(string);
-        if (image.xmlData().isEmpty() == false){
-            palette->setXml(image.xmlData());
-            palette->setImageSize(image.width(), image.height());
-            label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
-            this->setWindowTitle(image.filename());
-            qApp->processEvents();
 
-            float confidence = 0.0f;
+        // SET PALETTE WIDGETS FROM XML STRING OF IMAGE
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
+        label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+        this->setWindowTitle(image.filename());
+
+        if (image.xmlData().isEmpty() == false){
             QList<LAUMemoryObject> objects = poseNetwork.process(image);
             if (objects.isEmpty() == false){
-                QList<QPointF> points = poseNetwork.points(&confidence);
+                // SAVE OUTPUT OBJECT TO DISK SO USER CAN INSPECT
+                // objects.constFirst().save(QString());
+
+                // GET POINTS FOR MALE MOSQUITOS
+                float confidenceA = 0.70f;
+                QList<QVector3D> pointsA = poseNetwork.points(0, &confidenceA);
+
+                float confidenceB = 0.70f;
+                QList<QVector3D> pointsB = poseNetwork.points(1, &confidenceB);
+
+                // CONVERT POINTS TO XML STRING
+                if (qMax(confidenceA, confidenceB) > 0.7){
+                    if (confidenceA > confidenceB){
+                        palette->setClass(0);
+                        for (int n = 0; n < palette->fiducials(); n++){
+                            palette->setFiducial(n, qRound(pointsA.at(n+2).x()), qRound(pointsA.at(n+2).y()), (pointsA.at(n+2).z() > 0.5));
+                        }
+                    } else {
+                        palette->setClass(1);
+                        for (int n = 0; n < palette->fiducials(); n++){
+                            palette->setFiducial(n, qRound(pointsB.at(n+2).x()), qRound(pointsB.at(n+2).y()), (pointsB.at(n+2).z() > 0.5));
+                        }
+                    }
+
+                    // SAVE THE XML STRING FROM THE PALETTE
+                    ImageWithConfidencePacket packet;
+                    packet.confidenceA = confidenceA;
+                    packet.confidenceB = confidenceB;
+                    packet.string = string;
+                    packet.xml = palette->xml();
+
+                    // ADD THE PACKET TO OUR LIST
+                    imagePackets << packet;
+                }
+                palette->setDirty(false);
             }
+            qApp->processEvents();
         }
+    }
+
+    // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE A
+    directory = settings.value("LAUYoloPoseLabelerWidget::confidenceAFolderString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString confidenceAFolderString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving labeled data..."), directory);
+    if (confidenceAFolderString.isEmpty() == false) {
+        // SAVE THE USER SPECIFIED DIRECTORY FOR THE NEXT TIME AROUND
+        settings.setValue("LAUYoloPoseLabelerWidget::confidenceAFolderString", confidenceAFolderString);
+
+        // SORT CAMERAS IN ORDER OF CONFIDENCE A
+        std::sort(imagePackets.begin(), imagePackets.end(), ImageWithConfidencePacket_confidenceLessThanA);
+
+        // LOAD IMAGES IN ORDER OF LEAST TO MOST CONFIDENT
+        for (int n = 0; n < imagePackets.count(); n++){
+            LAUImage image(imagePackets.at(n).string);
+            image.setXmlData(imagePackets.at(n).xml.toLocal8Bit());
+            QString labelString = QString("%1").arg(qRound(imagePackets.at(n).confidenceA * 10000 + n));
+            while (labelString.length() < 4){
+                labelString.prepend("0");
+            }
+            QString newFileString = QString("%1/male_%2.tif").arg(confidenceAFolderString).arg(labelString);
+            image.save(newFileString);
+        }
+    }
+
+    // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE B
+    directory = settings.value("LAUYoloPoseLabelerWidget::confidenceBFolderString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString confidenceBFolderString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving labeled data..."), directory);
+    if (confidenceBFolderString.isEmpty() == false) {
+        // SAVE THE USER SPECIFIED DIRECTORY FOR THE NEXT TIME AROUND
+        settings.setValue("LAUYoloPoseLabelerWidget::confidenceBFolderString", confidenceBFolderString);
+
+        // SORT CAMERAS IN ORDER OF CONFIDENCE A
+        std::sort(imagePackets.begin(), imagePackets.end(), ImageWithConfidencePacket_confidenceLessThanB);
+
+        // LOAD IMAGES IN ORDER OF LEAST TO MOST CONFIDENT
+        for (int n = 0; n < imagePackets.count(); n++){
+            LAUImage image(imagePackets.at(n).string);
+            image.setXmlData(imagePackets.at(n).xml.toLocal8Bit());
+            QString labelString = QString("%1").arg(qRound(imagePackets.at(n).confidenceB * 10000 + n));
+            while (labelString.length() < 4){
+                labelString.prepend("0");
+            }
+            QString newFileString = QString("%1/female_%2.tif").arg(confidenceBFolderString).arg(labelString);
+            image.save(newFileString);
+        }
+    }
+
+    // RESET THE DISPLAY TO SHOW THE IMAGE THAT WAS THERE AT THE START OF THIS METHOD
+    if (fileStrings.count() > 0){
+        image = LAUImage(fileStrings.first());
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
+        label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+        this->setWindowTitle(QFileInfo(fileStrings.first()).fileName());
     }
 }
 
@@ -572,6 +695,24 @@ void LAUYoloPoseLabelerPalette::initialize(QStringList labels, QStringList fiduc
 LAUYoloPoseLabelerPalette::~LAUYoloPoseLabelerPalette()
 {
     ;
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+void LAUYoloPoseLabelerPalette::setClass(int index)
+{
+    labelsComboBox->setCurrentIndex(index);
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+void LAUYoloPoseLabelerPalette::setFiducial(int index, int x, int y, bool z)
+{
+    fiducialWidgets.at(index)->xSpinBox->setValue(x);
+    fiducialWidgets.at(index)->ySpinBox->setValue(y);
+    fiducialWidgets.at(index)->zRadioButton->setChecked(z);
 }
 
 /*************************************************************************************/

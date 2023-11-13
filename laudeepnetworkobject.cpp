@@ -218,7 +218,7 @@ LAUYoloPoseObject::LAUYoloPoseObject(QString filename, QObject *parent) : LAUDee
         layerNames.push_back("output0");
 
         inObject = LAUMemoryObject(640, 640, 1, sizeof(float), 3);
-        otObject = LAUMemoryObject(3549, 45, 1, sizeof(float));
+        otObject = LAUMemoryObject(8400, 45, 1, sizeof(float));
     }
 }
 
@@ -332,10 +332,10 @@ QList<LAUMemoryObject> LAUYoloPoseObject::process(LAUMemoryObject object, int fr
 /****************************************************************************/
 /****************************************************************************/
 /****************************************************************************/
-QList<QPointF> LAUYoloPoseObject::points(float *confidence)
+QList<QVector3D> LAUYoloPoseObject::points(int index, float *confidence)
 {
     // CREATE AN EMPTY DATASTRUCTURE TO RETURN TO THE USER
-    QList<QPointF> points;
+    QList<QVector3D> points;
 
     std::vector<cv::Rect> bboxList;
     std::vector<float> scoreList;
@@ -343,8 +343,8 @@ QList<QPointF> LAUYoloPoseObject::points(float *confidence)
     std::vector<std::vector<Keypoint>> kpList;
 
     for (unsigned int col = 0; col < otObject.width(); col++){
-        float score = ((float*)otObject.constScanLine(4))[col];
-        if (score > modelScoreThreshold){
+        float score = ((float*)otObject.constScanLine(4 + index))[col];
+        if (score > *confidence){
             float x0 = *(float*)otObject.constPixel(col,0) - *(float*)otObject.constPixel(col,2)/2.0f;
             float y0 = *(float*)otObject.constPixel(col,1) - *(float*)otObject.constPixel(col,3)/2.0f;
             float x1 = *(float*)otObject.constPixel(col,0) + *(float*)otObject.constPixel(col,2)/2.0f;
@@ -357,12 +357,11 @@ QList<QPointF> LAUYoloPoseObject::points(float *confidence)
             bbox.height = y1 - y0;
 
             std::vector<Keypoint> kps;
-            kps.emplace_back(*(float*)otObject.constPixel(col, 5),   *(float*)otObject.constPixel(col, 6));
-            kps.emplace_back(*(float*)otObject.constPixel(col, 7),   *(float*)otObject.constPixel(col, 8));
-            kps.emplace_back(*(float*)otObject.constPixel(col, 9),   *(float*)otObject.constPixel(col, 10));
-            kps.emplace_back(*(float*)otObject.constPixel(col, 11),  *(float*)otObject.constPixel(col, 12));
-            kps.emplace_back(*(float*)otObject.constPixel(col, 13),  *(float*)otObject.constPixel(col, 14));
-
+            for (unsigned int f = 0; f < 13; f++){
+                kps.emplace_back(*(float*)otObject.constPixel(col, 3*f + 6),
+                                 *(float*)otObject.constPixel(col, 3*f + 7),
+                                 *(float*)otObject.constPixel(col, 3*f + 8));
+            }
             bboxList.push_back(bbox);
             scoreList.push_back(score);
             kpList.push_back(kps);
@@ -374,23 +373,27 @@ QList<QPointF> LAUYoloPoseObject::points(float *confidence)
         // MERGE ANY OVERLAPPING REGIONS OF INTEREST INTO A SINGLE ROI AND SET OF FIDUCIALS
         cv::dnn::NMSBoxes(bboxList, scoreList, modelScoreThreshold, modelNMSThreshold, indicesList);
 
+        // PRESERVE THE INCOMING SCORE TO CONFIDENCE
+        *confidence = scoreList.at(indicesList.at(0));
+
         // ITERATE THROUGH ALL INDICES THAT CORRESPOND TO THE PRESERVED REGION OF INTEREST
         for (unsigned int col = 0; col < indicesList.size(); col++){
             int ind = indicesList.at(col);
 
             // ADD BOUNDING BOX TO OUTPUT VECTOR
-            cv::Rect_<float> bbox =bboxList.at(ind);
-            points << QPointF(bbox.x, bbox.y);
-            points << QPointF(bbox.width, bbox.height);
+            cv::Rect_<float> bbox = bboxList.at(ind);
+            points << QVector3D(bbox.x, bbox.y, 1.0);
+            points << QVector3D(bbox.width, bbox.height, 1.0);
 
             // ADD FIDUCIALS TO OUTPUT VECTOR
             std::vector<Keypoint> kps = kpList.at(col);
-            points << QPointF(kps.at(0).position.x, kps.at(0).position.y);
-            points << QPointF(kps.at(1).position.x, kps.at(1).position.y);
-            points << QPointF(kps.at(2).position.x, kps.at(2).position.y);
-            points << QPointF(kps.at(3).position.x, kps.at(3).position.y);
-            points << QPointF(kps.at(4).position.x, kps.at(4).position.y);
+            for (unsigned int f = 0; f < 13; f++){
+                points << QVector3D(kps.at(f).position.x, kps.at(f).position.y, kps.at(f).position.z);
+            }
         }
+    } else {
+        // PRESERVE THE INCOMING SCORE TO CONFIDENCE
+        *confidence = 0.0f;
     }
 
     // RETURN OUTPUT VECTOR TO USER

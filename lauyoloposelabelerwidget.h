@@ -87,6 +87,9 @@ public:
     QStringList labels() const;
     int fiducials() const { return(fiducialWidgets.count()); }
 
+    void setClass(int index);
+    void setFiducial(int index, int x, int y, bool z);
+
 public slots:
     void onPaintEvent(QPainter *painter, QSize sze);
     void onNextButtonClicked(bool state)

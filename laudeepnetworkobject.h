@@ -19,10 +19,10 @@ class LAUDeepNetworkObject : public QObject
 
 public:
     struct Keypoint {
-        Keypoint(float x, float y) {
-            this->position = cv::Point2d(x, y);
+        Keypoint(float x, float y, float z) {
+            this->position = cv::Point3d(x, y, z);
         }
-        cv::Point2d position{};
+        cv::Point3d position{};
     };
 
     struct Person {
@@ -93,7 +93,7 @@ public:
 
     QList<LAUMemoryObject> process(LAUMemoryObject object, int frame = 0);
     QList<LAUMemoryObject> process(LAUImage image, int frame = 0);
-    QList<QPointF> points(float* confidence);
+    QList<QVector3D> points(int index, float* confidence);
 
 signals:
 
