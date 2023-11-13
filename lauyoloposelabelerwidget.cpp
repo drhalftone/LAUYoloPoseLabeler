@@ -363,7 +363,7 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
+void LAUYoloPoseLabelerWidget::onSortByClass()
 {
     // LET THE USER SELECT THE DIRECTORY FOR LOADING IMAGES
     QSettings settings;
@@ -375,13 +375,32 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
         return;
     }
 
-    // LOAD A TRAINED MDOEL FROM DISK
-    LAUYoloPoseObject poseNetwork((QString()));
-
     // FIND ALL IMAGES INSIDE NESTED FOLDERS OF THE INPUT DIRECTORY
     QStringList inputImageStrings;
     QStringList directoryList;
     QDir currentDirectory;
+
+    // KEEP A LIST OF IMAGE FILES AND THEIR CORRESPONDING CONFIDENCES
+    QList<ImageWithConfidencePacket> imagePackets;
+
+    // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE A
+    directory = settings.value("LAUYoloPoseLabelerWidget::confidenceDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString confidenceDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving confidence results..."), directory);
+    if (confidenceDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::confidenceDirectoryString", confidenceDirectoryString);
+    } else {
+        return;
+    }
+
+    QDir maleDir(QString("%1/%2").arg(confidenceDirectoryString).arg("/males"));
+    if (maleDir.exists() == false){
+        maleDir.mkdir(maleDir.absolutePath());
+    }
+
+    QDir femaleDir(QString("%1/%2").arg(confidenceDirectoryString).arg("/females"));
+    if (femaleDir.exists() == false){
+        femaleDir.mkdir(femaleDir.absolutePath());
+    }
 
     // SAVE THE CURRENT IMAGE ON SCREEN IF DIRTY
     if (palette->isDirty()){
@@ -409,6 +428,64 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
         }
     }
 
+    for (int n = 0; n < inputImageStrings.count(); n++){
+        QString string = inputImageStrings.at(n);
+        LAUImage image(string);
+
+        // SET PALETTE WIDGETS FROM XML STRING OF IMAGE
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
+        label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+        this->setWindowTitle(image.filename());
+
+        if (image.xmlData().isEmpty() == false){
+            if (palette->getClass() == 0){
+                QString labelString = QString("%1/%2").arg(maleDir.absolutePath()).arg(QFileInfo(string).fileName());
+                image.save(labelString);
+            } else {
+                QString labelString = QString("%1/%2").arg(femaleDir.absolutePath()).arg(QFileInfo(string).fileName());
+                image.save(labelString);
+            }
+            qApp->processEvents();
+        }
+    }
+
+    // RESET THE DISPLAY TO SHOW THE IMAGE THAT WAS THERE AT THE START OF THIS METHOD
+    if (fileStrings.count() > 0){
+        image = LAUImage(fileStrings.first());
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
+        label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+        this->setWindowTitle(QFileInfo(fileStrings.first()).fileName());
+    }
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
+{
+    // LET THE USER SELECT THE DIRECTORY FOR LOADING IMAGES
+    QSettings settings;
+    QString directory = settings.value("LAUYoloPoseLabelerWidget::outputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString inputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory to find training data..."), directory);
+    if (inputDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::outputDirectoryString", inputDirectoryString);
+    } else {
+        return;
+    }
+
+    // LOAD A TRAINED MDOEL FROM DISK
+    LAUYoloPoseObject poseNetwork((QString()));
+    if (poseNetwork.isValid() == false){
+        return;
+    }
+
+    // FIND ALL IMAGES INSIDE NESTED FOLDERS OF THE INPUT DIRECTORY
+    QStringList inputImageStrings;
+    QStringList directoryList;
+    QDir currentDirectory;
+
     // KEEP A LIST OF IMAGE FILES AND THEIR CORRESPONDING CONFIDENCES
     QList<ImageWithConfidencePacket> imagePackets;
 
@@ -429,6 +506,37 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
     QDir femaleDir(QString("%1/%2").arg(confidenceDirectoryString).arg("/females"));
     if (femaleDir.exists() == false){
         femaleDir.mkdir(femaleDir.absolutePath());
+    }
+
+    QDir errorDir(QString("%1/%2").arg(confidenceDirectoryString).arg("/errors"));
+    if (errorDir.exists() == false){
+        errorDir.mkdir(errorDir.absolutePath());
+    }
+
+    // SAVE THE CURRENT IMAGE ON SCREEN IF DIRTY
+    if (palette->isDirty()){
+        image.setXmlData(palette->xml());
+        image.save(fileStrings.first());
+        palette->setDirty(false);
+    }
+
+    directoryList.append(inputDirectoryString);
+    while (directoryList.count() > 0) {
+        currentDirectory.setPath(directoryList.takeFirst());
+        QStringList list = currentDirectory.entryList();
+        while (list.count() > 0) {
+            QString item = list.takeFirst();
+            if (!item.startsWith(".")) {
+                QDir dir(currentDirectory.absolutePath().append(QString("/").append(item)));
+                if (dir.exists()) {
+                    directoryList.append(dir.absolutePath());
+                } else if (item.endsWith(".tif")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                } else if (item.endsWith(".tiff")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                }
+            }
+        }
     }
 
     for (int n = 0; n < inputImageStrings.count(); n++){
@@ -453,31 +561,48 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
 
                 // CONVERT POINTS TO XML STRING
                 if (qMax(confidenceA, confidenceB) > 0.7){
+                    bool errorFlag = false;
                     if (confidenceA > confidenceB){
+                        if (palette->getClass() != 0){
+                            errorFlag = true;
+                        }
                         palette->setClass(0);
                         for (int n = 0; n < palette->fiducials(); n++){
                             palette->setFiducial(n, qRound(pointsA.at(n+2).x()), qRound(pointsA.at(n+2).y()), (pointsA.at(n+2).z() > 0.5));
                         }
                     } else {
+                        if (palette->getClass() != 1){
+                            errorFlag = true;
+                        }
                         palette->setClass(1);
                         for (int n = 0; n < palette->fiducials(); n++){
                             palette->setFiducial(n, qRound(pointsB.at(n+2).x()), qRound(pointsB.at(n+2).y()), (pointsB.at(n+2).z() > 0.5));
                         }
                     }
+
+                    QString fileString = QFileInfo(string).fileName().right(9);
+
+                    QString labelStringA = QString("%1").arg(qRound(confidenceA * 10000 + n));
+                    while (labelStringA.length() < 4){
+                        labelStringA.prepend("0");
+                    }
+
+                    QString labelStringB = QString("%1").arg(qRound(confidenceB * 10000 + n));
+                    while (labelStringB.length() < 4){
+                        labelStringB.prepend("0");
+                    }
+
+                    // SAVE THE IMAGE TO THE ERROR STRING BEFORE WE CHANGE ITS XML FIELD TO THE AI MODEL OUTPUT
+                    if (errorFlag){
+                        QString errorString = QString("%1/error_%2_%3_%4").arg(errorDir.absolutePath()).arg(labelStringA).arg(labelStringB).arg(fileString);
+                        image.save(errorString);
+                    }
                     image.setXmlData(palette->xml());
 
-                    QString labelString = QString("%1").arg(qRound(confidenceA * 10000 + n));
-                    while (labelString.length() < 4){
-                        labelString.prepend("0");
-                    }
-                    labelString = QString("%1/male_%2.tif").arg(maleDir.absolutePath()).arg(labelString);
+                    QString labelString = QString("%1/male_%2_%3_%4").arg(maleDir.absolutePath()).arg(labelStringA).arg(labelStringB).arg(fileString);
                     image.save(labelString);
 
-                    labelString = QString("%1").arg(qRound(confidenceB * 10000 + n));
-                    while (labelString.length() < 4){
-                        labelString.prepend("0");
-                    }
-                    labelString = QString("%1/female_%2.tif").arg(femaleDir.absolutePath()).arg(labelString);
+                    labelString = QString("%1/female_%2_%3_%4").arg(femaleDir.absolutePath()).arg(labelStringB).arg(labelStringA).arg(fileString);
                     image.save(labelString);
                 }
                 palette->setDirty(false);
@@ -510,6 +635,10 @@ void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
     QAction action2("Validate Trained Pose Model", this);
     connect(&action2, SIGNAL(triggered()), this, SLOT(onLabelImagesFromDisk()));
     contextMenu.addAction(&action2);
+
+    QAction action3("Sort Images by Class", this);
+    connect(&action3, SIGNAL(triggered()), this, SLOT(onSortByClass()));
+    contextMenu.addAction(&action3);
 
     contextMenu.exec(event->globalPos());
 }

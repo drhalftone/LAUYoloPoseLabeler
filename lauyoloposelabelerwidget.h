@@ -86,6 +86,7 @@ public:
     QString labelString(QRect *rect) const;
     QStringList labels() const;
     int fiducials() const { return(fiducialWidgets.count()); }
+    int getClass() const { return(labelsComboBox->currentIndex()); }
 
     void setClass(int index);
     void setFiducial(int index, int x, int y, bool z);
@@ -153,6 +154,7 @@ public:
 public slots:
     void onContextMenuTriggered(QMouseEvent *event);
     void onExportLabelsForYoloTraining();
+    void onSortByClass();
     void onLabelImagesFromDisk();
     void onPreviousButtonClicked(bool state);
     void onNextButtonClicked(bool state);
