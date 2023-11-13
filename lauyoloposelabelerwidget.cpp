@@ -412,6 +412,25 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
     // KEEP A LIST OF IMAGE FILES AND THEIR CORRESPONDING CONFIDENCES
     QList<ImageWithConfidencePacket> imagePackets;
 
+    // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE A
+    directory = settings.value("LAUYoloPoseLabelerWidget::confidenceDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString confidenceDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving confidence results..."), directory);
+    if (confidenceDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::confidenceDirectoryString", confidenceDirectoryString);
+    } else {
+        return;
+    }
+
+    QDir maleDir(QString("%1/%2").arg(confidenceDirectoryString).arg("/males"));
+    if (maleDir.exists() == false){
+        maleDir.mkdir(maleDir.absolutePath());
+    }
+
+    QDir femaleDir(QString("%1/%2").arg(confidenceDirectoryString).arg("/females"));
+    if (femaleDir.exists() == false){
+        femaleDir.mkdir(femaleDir.absolutePath());
+    }
+
     for (int n = 0; n < inputImageStrings.count(); n++){
         QString string = inputImageStrings.at(n);
         LAUImage image(string);
@@ -425,9 +444,6 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
         if (image.xmlData().isEmpty() == false){
             QList<LAUMemoryObject> objects = poseNetwork.process(image);
             if (objects.isEmpty() == false){
-                // SAVE OUTPUT OBJECT TO DISK SO USER CAN INSPECT
-                // objects.constFirst().save(QString());
-
                 // GET POINTS FOR MALE MOSQUITOS
                 float confidenceA = 0.70f;
                 QList<QVector3D> pointsA = poseNetwork.points(0, &confidenceA);
@@ -448,66 +464,25 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
                             palette->setFiducial(n, qRound(pointsB.at(n+2).x()), qRound(pointsB.at(n+2).y()), (pointsB.at(n+2).z() > 0.5));
                         }
                     }
+                    image.setXmlData(palette->xml());
 
-                    // SAVE THE XML STRING FROM THE PALETTE
-                    ImageWithConfidencePacket packet;
-                    packet.confidenceA = confidenceA;
-                    packet.confidenceB = confidenceB;
-                    packet.string = string;
-                    packet.xml = palette->xml();
+                    QString labelString = QString("%1").arg(qRound(confidenceA * 10000 + n));
+                    while (labelString.length() < 4){
+                        labelString.prepend("0");
+                    }
+                    labelString = QString("%1/male_%2.tif").arg(maleDir.absolutePath()).arg(labelString);
+                    image.save(labelString);
 
-                    // ADD THE PACKET TO OUR LIST
-                    imagePackets << packet;
+                    labelString = QString("%1").arg(qRound(confidenceB * 10000 + n));
+                    while (labelString.length() < 4){
+                        labelString.prepend("0");
+                    }
+                    labelString = QString("%1/female_%2.tif").arg(femaleDir.absolutePath()).arg(labelString);
+                    image.save(labelString);
                 }
                 palette->setDirty(false);
             }
             qApp->processEvents();
-        }
-    }
-
-    // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE A
-    directory = settings.value("LAUYoloPoseLabelerWidget::confidenceAFolderString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
-    QString confidenceAFolderString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving labeled data..."), directory);
-    if (confidenceAFolderString.isEmpty() == false) {
-        // SAVE THE USER SPECIFIED DIRECTORY FOR THE NEXT TIME AROUND
-        settings.setValue("LAUYoloPoseLabelerWidget::confidenceAFolderString", confidenceAFolderString);
-
-        // SORT CAMERAS IN ORDER OF CONFIDENCE A
-        std::sort(imagePackets.begin(), imagePackets.end(), ImageWithConfidencePacket_confidenceLessThanA);
-
-        // LOAD IMAGES IN ORDER OF LEAST TO MOST CONFIDENT
-        for (int n = 0; n < imagePackets.count(); n++){
-            LAUImage image(imagePackets.at(n).string);
-            image.setXmlData(imagePackets.at(n).xml.toLocal8Bit());
-            QString labelString = QString("%1").arg(qRound(imagePackets.at(n).confidenceA * 10000 + n));
-            while (labelString.length() < 4){
-                labelString.prepend("0");
-            }
-            QString newFileString = QString("%1/male_%2.tif").arg(confidenceAFolderString).arg(labelString);
-            image.save(newFileString);
-        }
-    }
-
-    // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE B
-    directory = settings.value("LAUYoloPoseLabelerWidget::confidenceBFolderString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
-    QString confidenceBFolderString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving labeled data..."), directory);
-    if (confidenceBFolderString.isEmpty() == false) {
-        // SAVE THE USER SPECIFIED DIRECTORY FOR THE NEXT TIME AROUND
-        settings.setValue("LAUYoloPoseLabelerWidget::confidenceBFolderString", confidenceBFolderString);
-
-        // SORT CAMERAS IN ORDER OF CONFIDENCE A
-        std::sort(imagePackets.begin(), imagePackets.end(), ImageWithConfidencePacket_confidenceLessThanB);
-
-        // LOAD IMAGES IN ORDER OF LEAST TO MOST CONFIDENT
-        for (int n = 0; n < imagePackets.count(); n++){
-            LAUImage image(imagePackets.at(n).string);
-            image.setXmlData(imagePackets.at(n).xml.toLocal8Bit());
-            QString labelString = QString("%1").arg(qRound(imagePackets.at(n).confidenceB * 10000 + n));
-            while (labelString.length() < 4){
-                labelString.prepend("0");
-            }
-            QString newFileString = QString("%1/female_%2.tif").arg(confidenceBFolderString).arg(labelString);
-            image.save(newFileString);
         }
     }
 
