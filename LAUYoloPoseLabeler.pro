@@ -61,6 +61,17 @@ win32 {
     INCLUDEPATH += $$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/include)
     DEPENDPATH  += $$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/include)
     LIBS +=      -L$$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/lib/intel64) -lippi -lipps -lippcore
+
+    opencv {
+       DEFINES       += USE_OPENCV ENABLEDEEPNETWORK
+       INCLUDEPATH   += $$quote(C:/usr/opencv/include)
+       DEPENDPATH    += $$quote(C:/usr/opencv/include)
+       LIBS          += -L$$quote(C:/usr/opencv/x64/vc16/lib)
+       CONFIG(release, debug|release): LIBS += -lopencv_core455 -lopencv_objdetect455 -lopencv_imgproc455 -lopencv_calib3d455 \
+                                               -lopencv_highgui455 -lopencv_ml455 -lopencv_face455 -lopencv_dnn455 -lopencv_imgcodecs455
+       CONFIG(debug, debug|release):   LIBS += -lopencv_core455d -lopencv_objdetect455d -lopencv_imgproc455d -lopencv_calib3d455d \
+                                               -lopencv_highgui455d -lopencv_ml455d -lopencv_face455d -lopencv_dnn455d -lopencv_imgcodecs455d
+    }
 }
 
 # security find-identity
