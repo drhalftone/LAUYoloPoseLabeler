@@ -1,5 +1,7 @@
 #include "laudeepnetworkobject.h"
 
+// https://github.com/mallumoSK/yolov8/blob/master/yolo/YoloPose.cpp
+
 #include "opencv2/core/core.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 
@@ -36,6 +38,7 @@ LAUDeepNetworkObject::LAUDeepNetworkObject(QString filename, QObject *parent) : 
     try {
         net = cv::dnn::readNetFromONNX(filename.toStdString());
         net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
     } catch (cv::Exception &e) {
         qDebug() << QString(e.msg.data());
     }
@@ -215,7 +218,7 @@ LAUYoloPoseObject::LAUYoloPoseObject(QString filename, QObject *parent) : LAUDee
         layerNames.push_back("output0");
 
         inObject = LAUMemoryObject(640, 640, 1, sizeof(float), 3);
-        otObject = LAUMemoryObject(8400, 15, 1, sizeof(float));
+        otObject = LAUMemoryObject(3549, 45, 1, sizeof(float));
     }
 }
 
@@ -224,11 +227,13 @@ LAUYoloPoseObject::LAUYoloPoseObject(QString filename, QObject *parent) : LAUDee
 /****************************************************************************/
 QList<LAUMemoryObject> LAUYoloPoseObject::process(LAUImage image, int frame)
 {
+    Q_UNUSED(frame);
+
     QList<LAUMemoryObject> objects;
 
     // MAKE SURE INPUT IMAGE IS THE CORRECT SIZE
-    if (image.width() != 640 || image.height() != 640){
-        image = image.rescale(640, 640);
+    if (image.width() != inObject.width() || image.height() != inObject.height()){
+        image = image.rescale(inObject.width(), inObject.height());
     }
 
     // MAKE SURE INPUT IMAGE IS RGB
@@ -253,7 +258,7 @@ QList<LAUMemoryObject> LAUYoloPoseObject::process(LAUImage image, int frame)
     memcpy(inObject.constFrame(1), matG.data, inObject.block());
     memcpy(inObject.constFrame(2), matB.data, inObject.block());
 
-    std::vector<int> dims = {1, 3, 640, 640};
+    std::vector<int> dims = {1, 3, (int)inObject.width(), (int)inObject.height()};
     cv::Mat onnxMat(dims, CV_32F, inObject.constPointer());
 
     net.setInput(onnxMat);

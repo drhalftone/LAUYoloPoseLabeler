@@ -404,9 +404,15 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
 void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
 {
     QMenu contextMenu(tr("Tools"), this);
+
     QAction action1("Export Labels for Yolo Training", this);
     connect(&action1, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloTraining()));
     contextMenu.addAction(&action1);
+
+    QAction action2("Validate Trained Pose Model", this);
+    connect(&action2, SIGNAL(triggered()), this, SLOT(onLabelImagesFromDisk()));
+    contextMenu.addAction(&action2);
+
     contextMenu.exec(event->globalPos());
 }
 
