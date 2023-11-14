@@ -90,23 +90,19 @@ void LAUYoloPoseLabelerWidget::initialize()
     labels << "Female";
 
     QStringList fiducials;
-#ifndef ZOOMINTOHEAD
     fiducials << "Leg, Right Front";
     fiducials << "Leg, Right Middle";
     fiducials << "Leg, Right Back";
     fiducials << "Leg, Left Front";
     fiducials << "Leg, Left Middle";
     fiducials << "Leg, Left Back";
-#endif
     fiducials << "Head";
     fiducials << "Antenna, Left";
     fiducials << "Antenna, Right";
     fiducials << "Labial Palp, Left";
     fiducials << "Proboscis";
     fiducials << "Labial Palp, Right";
-#ifndef ZOOMINTOHEAD
     fiducials << "Genitalia";
-#endif
 
     palette = new LAUYoloPoseLabelerPalette(labels, fiducials);
     connect(label, SIGNAL(emitMousePressEvent(int,int)), palette, SLOT(onSpinBoxValueChanged(int,int)));
@@ -689,6 +685,8 @@ LAUFiducialWidget::LAUFiducialWidget(QWidget *parent) : QWidget(parent)
     xSpinBox->setFixedWidth(60);
     xSpinBox->setReadOnly(true);
     xSpinBox->setMaximum(10000);
+    xSpinBox->setMinimum(-1);
+    xSpinBox->setValue(-1);
     xSpinBox->setAlignment(Qt::AlignRight);
     this->layout()->addWidget(xSpinBox);
 
@@ -696,6 +694,8 @@ LAUFiducialWidget::LAUFiducialWidget(QWidget *parent) : QWidget(parent)
     ySpinBox->setFixedWidth(60);
     ySpinBox->setReadOnly(true);
     ySpinBox->setMaximum(10000);
+    ySpinBox->setMinimum(-1);
+    ySpinBox->setValue(-1);
     ySpinBox->setAlignment(Qt::AlignRight);
     this->layout()->addWidget(ySpinBox);
 }
@@ -926,15 +926,15 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect *rect, bool flag) const
         }
 
         // MOVE REGION OF INTEREST TO KEEP ALL FIDUCIALS INSIDE BOX
-        if (xMin < rect->left()){
+        if (xMin < rect->left() || rect->left() < 0){
             rect->moveLeft(qMax(0, xMin));
-        } else if (xMax > rect->right()){
+        } else if (xMax > rect->right() || rect->right() >= imageWidth){
             rect->moveRight(qMin(xMax, imageWidth-1));
         }
 
-        if (yMin < rect->top()){
+        if (yMin < rect->top() || rect->top() < 0){
             rect->moveTop(qMax(0, yMin));
-        } else if (yMax > rect->bottom()){
+        } else if (yMax > rect->bottom() || rect->bottom() >= imageHeight){
             rect->moveBottom(qMin(yMax, imageHeight-1));
         }
     } else {
@@ -952,15 +952,15 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect *rect, bool flag) const
         }
 
         // MOVE REGION OF INTEREST TO KEEP ALL FIDUCIALS INSIDE BOX
-        if (xMin < rect->left()){
+        if (xMin < rect->left() || rect->left() < 0){
             rect->moveLeft(qMax(0, xMin));
-        } else if (xMax > rect->right()){
+        } else if (xMax > rect->right() || rect->right() >= imageWidth){
             rect->moveRight(qMin(xMax, imageWidth-1));
         }
 
-        if (yMin < rect->top()){
+        if (yMin < rect->top() || rect->top() < 0){
             rect->moveTop(qMax(0, yMin));
-        } else if (yMax > rect->bottom()){
+        } else if (yMax > rect->bottom() || rect->bottom() >= imageHeight){
             rect->moveBottom(qMin(yMax, imageHeight-1));
         }
     }
@@ -1088,6 +1088,9 @@ void LAUYoloPoseLabelerPalette::onPaintEvent(QPainter *painter, QSize sze)
     int yMax = -1000;
 
     for (int n = 0; n < fiducialWidgets.count(); n++){
+        if (fiducialWidgets.at(n)->xSpinBox->value() < 0){
+            continue;
+        }
         xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value());
         xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value());
         yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value());
@@ -1109,6 +1112,10 @@ void LAUYoloPoseLabelerPalette::onPaintEvent(QPainter *painter, QSize sze)
     painter->drawRect(xLeft, yTop, xWide, yTall);
 
     for (int n = 0; n < fiducialWidgets.count(); n++){
+        if (fiducialWidgets.at(n)->xSpinBox->value() < 0){
+            continue;
+        }
+
         QPoint point;
         point.setX((double)fiducialWidgets.at(n)->xSpinBox->value() / (double)imageWidth * (double)sze.width());
         point.setY((double)fiducialWidgets.at(n)->ySpinBox->value() / (double)imageHeight * (double)sze.height());
