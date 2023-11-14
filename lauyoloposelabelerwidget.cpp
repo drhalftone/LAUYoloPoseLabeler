@@ -90,19 +90,23 @@ void LAUYoloPoseLabelerWidget::initialize()
     labels << "Female";
 
     QStringList fiducials;
+#ifndef ZOOMINTOHEAD
     fiducials << "Leg, Right Front";
     fiducials << "Leg, Right Middle";
     fiducials << "Leg, Right Back";
     fiducials << "Leg, Left Front";
     fiducials << "Leg, Left Middle";
     fiducials << "Leg, Left Back";
+#endif
     fiducials << "Head";
     fiducials << "Antenna, Left";
     fiducials << "Antenna, Right";
     fiducials << "Labial Palp, Left";
     fiducials << "Proboscis";
     fiducials << "Labial Palp, Right";
+#ifndef ZOOMINTOHEAD
     fiducials << "Genitalia";
+#endif
 
     palette = new LAUYoloPoseLabelerPalette(labels, fiducials);
     connect(label, SIGNAL(emitMousePressEvent(int,int)), palette, SLOT(onSpinBoxValueChanged(int,int)));
@@ -285,7 +289,6 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             this->setWindowTitle(image.filename());
             qApp->processEvents();
 
-#define ZOOMINTOHEAD
 #ifdef ZOOMINTOHEAD
             int left = (image.width() - 640)/2;
             int top = (image.height() - 640)/2;
