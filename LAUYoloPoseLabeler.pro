@@ -67,10 +67,10 @@ win32 {
        INCLUDEPATH   += $$quote(C:/usr/opencv/include)
        DEPENDPATH    += $$quote(C:/usr/opencv/include)
        LIBS          += -L$$quote(C:/usr/opencv/x64/vc16/lib)
-       CONFIG(release, debug|release): LIBS += -lopencv_core455 -lopencv_objdetect455 -lopencv_imgproc455 -lopencv_calib3d455 \
-                                               -lopencv_highgui455 -lopencv_ml455 -lopencv_face455 -lopencv_dnn455 -lopencv_imgcodecs455
-       CONFIG(debug, debug|release):   LIBS += -lopencv_core455d -lopencv_objdetect455d -lopencv_imgproc455d -lopencv_calib3d455d \
-                                               -lopencv_highgui455d -lopencv_ml455d -lopencv_face455d -lopencv_dnn455d -lopencv_imgcodecs455d
+       CONFIG(release, debug|release): LIBS += -lopencv_core481 -lopencv_objdetect481 -lopencv_imgproc481 -lopencv_calib3d481 \
+                                               -lopencv_highgui481 -lopencv_ml481 -lopencv_face481 -lopencv_dnn481 -lopencv_imgcodecs481
+       CONFIG(debug, debug|release):   LIBS += -lopencv_core481d -lopencv_objdetect481d -lopencv_imgproc481d -lopencv_calib3d481d \
+                                               -lopencv_highgui481d -lopencv_ml481d -lopencv_face481d -lopencv_dnn481d -lopencv_imgcodecs481d
     }
 }
 

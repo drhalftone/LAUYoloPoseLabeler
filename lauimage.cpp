@@ -1,6 +1,6 @@
 #include "lauimage.h"
 
-#include <QDesktopWidget>
+#include <QScreen>
 
 using namespace libtiff;
 
@@ -1623,7 +1623,7 @@ LAUImage LAUImage::stretch(unsigned int rows, double cols)
         pointListLengthY = 0;
         pointListY.append(QPointF(0.0, 0.0));
     } else {
-        qSort(pointListY.begin(), pointListY.end(), pointYCoordinateLessThan);
+        std::sort(pointListY.begin(), pointListY.end(), pointYCoordinateLessThan);
     }
 
     //QProgressDialog progressDialog(QString("Stretching image..."), QString("Abort"), 0, rows, nullptr);
@@ -1670,7 +1670,7 @@ LAUImage LAUImage::stretch(unsigned int rows, double cols)
             pointListLengthX = 0;
             pointListX.append(QPointF(0.0, 0.0));
         } else {
-            qSort(pointListX.begin(), pointListX.end(), pointYCoordinateLessThan);
+            std::sort(pointListX.begin(), pointListX.end(), pointYCoordinateLessThan);
         }
 
         // FILL IN BUFFER PRIOR TO UPSAMPLING
