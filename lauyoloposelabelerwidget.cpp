@@ -285,15 +285,30 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             this->setWindowTitle(image.filename());
             qApp->processEvents();
 
+#define ZOOMINTOHEAD
+#ifdef ZOOMINTOHEAD
+            int left = (image.width() - 640)/2;
+            int top = (image.height() - 640)/2;
+            QRect rect(left, top, 640, 640);
+
             // GET STRING THAT WE CAN WRITE TO LABELS FILE
+            QString labelString = palette->labelString(&rect, true);
+
+            // CROP AND RESCALE IMAGE FOR TRAINING
+            image = image.crop(rect.left(), rect.top(), rect.width(), rect.height());
+            image.setXmlData(palette->xml(rect, 1.0, true));
+#else
             int left = (image.width() - 1000)/2;
             int top = (image.height() - 1000)/2;
-
             QRect rect(left, top, 1000, 1000);
-            QString labelString = palette->labelString(&rect);
 
+            // GET STRING THAT WE CAN WRITE TO LABELS FILE
+            QString labelString = palette->labelString(&rect, false);
+
+            // CROP AND RESCALE IMAGE FOR TRAINING
             image = image.crop(rect.left(), rect.top(), rect.width(), rect.height()).rescale(640,640);
             image.setXmlData(palette->xml(rect, 0.640));
+#endif
 
             QString newFileString = QString("%1").arg(validImageCounter);
             while (newFileString.length() < 9){
@@ -337,7 +352,11 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         stream << "val:   images/val # val images (relative to 'path') 4 images\n";
         stream << "\n";
         stream << "# Keypoints\n";
+#ifdef ZOOMINTOHEAD
+        stream << "kpt_shape: [" << 6 << ", 3]  # number of keypoints, number of dims (3 for x,y,visible)\n";
+#else
         stream << "kpt_shape: [" << palette->fiducials() << ", 3]  # number of keypoints, number of dims (3 for x,y,visible)\n";
+#endif
         stream << "\n";
         stream << "# Classes\n";
         stream << "names:\n";
@@ -822,7 +841,7 @@ void LAUYoloPoseLabelerPalette::setFiducial(int index, int x, int y, bool z)
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-QByteArray LAUYoloPoseLabelerPalette::xml(QRect roi, double scale) const
+QByteArray LAUYoloPoseLabelerPalette::xml(QRect roi, double scale, bool flag) const
 {
     // CREATE THE XML DATA PACKET USING QT'S XML STREAM OBJECTS
     QBuffer buffer;
@@ -843,6 +862,9 @@ QByteArray LAUYoloPoseLabelerPalette::xml(QRect roi, double scale) const
 
     // WRITE THE FIDUCIALS TO XML
     for (int n = 0; n < fiducialWidgets.count(); n++){
+        if (flag && (n < 6 || n > 11)){
+            continue;
+        }
         int x = qRound((fiducialWidgets.at(n)->xSpinBox->value() - roi.left()) * scale);
         int y = qRound((fiducialWidgets.at(n)->ySpinBox->value() - roi.top()) * scale);
         int z = fiducialWidgets.at(n)->zRadioButton->isChecked();
@@ -875,46 +897,81 @@ QStringList LAUYoloPoseLabelerPalette::labels() const
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-QString LAUYoloPoseLabelerPalette::labelString(QRect *rect) const
+QString LAUYoloPoseLabelerPalette::labelString(QRect *rect, bool flag) const
 {
     QList<float> fiducials;
 
     // EXTRACT THE LABEL INDEX
     fiducials << (double)labelsComboBox->currentIndex();
 
-    // EXTRACT THE BOUNDING BOX
+    if (flag){
+        // CENTER THE 7TH FIDUCIAL IN THE REGION OF INTEREST
+        rect->moveCenter(QPoint(fiducialWidgets.at(6)->xSpinBox->value(), fiducialWidgets.at(6)->ySpinBox->value()));
+
+        // EXTRACT THE BOUNDING BOX
+        int xMin = 10000;
+        int xMax = -1000;
+        int yMin = 10000;
+        int yMax = -1000;
+
+        // 6, 7, 8, 9, 10, 11
+        for (int n = 6; n < 12 && n < fiducialWidgets.count(); n++){
+            xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - 40);
+            xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() + 40);
+            yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - 40);
+            yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() + 40);
+        }
+
+        // MOVE REGION OF INTEREST TO KEEP ALL FIDUCIALS INSIDE BOX
+        if (xMin < rect->left()){
+            rect->moveLeft(qMax(0, xMin));
+        } else if (xMax > rect->right()){
+            rect->moveRight(qMin(xMax, imageWidth-1));
+        }
+
+        if (yMin < rect->top()){
+            rect->moveTop(qMax(0, yMin));
+        } else if (yMax > rect->bottom()){
+            rect->moveBottom(qMin(yMax, imageHeight-1));
+        }
+    } else {
+        // EXTRACT THE BOUNDING BOX
+        int xMin = 10000;
+        int xMax = -1000;
+        int yMin = 10000;
+        int yMax = -1000;
+
+        for (int n = 0; n < fiducialWidgets.count(); n++){
+            xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - 40);
+            xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() + 40);
+            yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - 40);
+            yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() + 40);
+        }
+
+        // MOVE REGION OF INTEREST TO KEEP ALL FIDUCIALS INSIDE BOX
+        if (xMin < rect->left()){
+            rect->moveLeft(qMax(0, xMin));
+        } else if (xMax > rect->right()){
+            rect->moveRight(qMin(xMax, imageWidth-1));
+        }
+
+        if (yMin < rect->top()){
+            rect->moveTop(qMax(0, yMin));
+        } else if (yMax > rect->bottom()){
+            rect->moveBottom(qMin(yMax, imageHeight-1));
+        }
+    }
+
+    // RECALCULATE LIMITS NOW THAT WE'VE CENTERED THE ROI
     int xMin = 10000;
     int xMax = -1000;
     int yMin = 10000;
     int yMax = -1000;
 
     for (int n = 0; n < fiducialWidgets.count(); n++){
-        xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - 40);
-        xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() + 40);
-        yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - 40);
-        yMax = qMax(yMax, fiducialWidgets.at(n)->ySpinBox->value() + 40);
-    }
-
-    // MOVE REGION OF INTEREST TO KEEP ALL FIDUCIALS INSIDE BOX
-    if (xMin < rect->left()){
-        rect->moveLeft(qMax(0, xMin));
-    } else if (xMax > rect->right()){
-        rect->moveRight(qMin(xMax, imageWidth-1));
-    }
-
-    if (yMin < rect->top()){
-        rect->moveTop(qMax(0, yMin));
-    } else if (yMax > rect->bottom()){
-        rect->moveBottom(qMin(yMax, imageHeight-1));
-    }
-
-    // RECALCULATE LIMITS NOW THAT WE'VE CENTERED THE ROI
-    xMin = 10000;
-    xMax = -1000;
-    yMin = 10000;
-    yMax = -1000;
-
-    for (int n = 0; n < fiducialWidgets.count(); n++){
+        if (flag && (n < 6 || n > 11)){
+            continue;
+        }
         xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - rect->left());
         xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() - rect->left());
         yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - rect->top());
@@ -933,6 +990,9 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect *rect) const
 
     // EXTRACT THE FIDUCIAL COORDINATES
     for (int n = 0; n < fiducialWidgets.count(); n++){
+        if (flag && (n < 6 || n > 11)){
+            continue;
+        }
         fiducials << (double)(fiducialWidgets.at(n)->xSpinBox->value() - rect->left()) / (double)rect->width();
         fiducials << (double)(fiducialWidgets.at(n)->ySpinBox->value() - rect->top()) / (double)rect->height();
         if (fiducialWidgets.at(n)->zRadioButton->isChecked()){
@@ -942,19 +1002,13 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect *rect) const
         }
     }
 
-    bool flag = false;
-    for (int n = 1; n < fiducialWidgets.count(); n++){
+    // CLAMP ALL COORDINATES TO NOMALIZED IMAGE BOUNDS
+    for (int n = 1; n < fiducials.count(); n++){
         if (fiducials.at(n) > 1.0){
-            flag = true;
             fiducials.replace(n, 0.9999);
         } else if (fiducials.at(n) < 0.0){
-            flag = true;
             fiducials.replace(n, 0.0001);
         }
-    }
-
-    if (flag){
-        qDebug() << fiducials;
     }
 
     QString string;
