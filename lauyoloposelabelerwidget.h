@@ -153,6 +153,7 @@ public:
 
 public slots:
     void onContextMenuTriggered(QMouseEvent *event);
+    void onExportLabelsForYoloClassifierTraining();
     void onExportLabelsForYoloTraining();
     void onSortByClass();
     void onLabelImagesFromDisk();

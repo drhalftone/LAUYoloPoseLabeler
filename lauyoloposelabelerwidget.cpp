@@ -225,32 +225,32 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         return;
     }
 
-    QDir imageDir(QString("%1/%2").arg(outputDirectoryString).arg("/images"));
+    QDir imageDir(QString("%1/%2").arg(outputDirectoryString).arg("images"));
     if (imageDir.exists() == false){
         imageDir.mkdir(imageDir.absolutePath());
     }
 
-    QDir imageTrainDir(QString("%1/%2").arg(imageDir.absolutePath()).arg("/train"));
+    QDir imageTrainDir(QString("%1/%2").arg(imageDir.absolutePath()).arg("train"));
     if (imageTrainDir.exists() == false){
         imageTrainDir.mkdir(imageTrainDir.absolutePath());
     }
 
-    QDir imageValidDir(QString("%1/%2").arg(imageDir.absolutePath()).arg("/val"));
+    QDir imageValidDir(QString("%1/%2").arg(imageDir.absolutePath()).arg("val"));
     if (imageValidDir.exists() == false){
         imageValidDir.mkdir(imageValidDir.absolutePath());
     }
 
-    QDir labelDir(QString("%1/%2").arg(outputDirectoryString).arg("/labels"));
+    QDir labelDir(QString("%1/%2").arg(outputDirectoryString).arg("labels"));
     if (labelDir.exists() == false){
         labelDir.mkdir(labelDir.absolutePath());
     }
 
-    QDir labelTrainDir(QString("%1/%2").arg(labelDir.absolutePath()).arg("/train"));
+    QDir labelTrainDir(QString("%1/%2").arg(labelDir.absolutePath()).arg("train"));
     if (labelTrainDir.exists() == false){
         labelTrainDir.mkdir(labelTrainDir.absolutePath());
     }
 
-    QDir labelValidDir(QString("%1/%2").arg(labelDir.absolutePath()).arg("/val"));
+    QDir labelValidDir(QString("%1/%2").arg(labelDir.absolutePath()).arg("val"));
     if (labelValidDir.exists() == false){
         labelValidDir.mkdir(labelValidDir.absolutePath());
     }
@@ -308,7 +308,6 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
             image = image.crop(rect.left(), rect.top(), rect.width(), rect.height()).rescale(640,640);
             image.setXmlData(palette->xml(rect, 0.640));
 #endif
-
             QString newFileString = QString("%1").arg(validImageCounter);
             while (newFileString.length() < 9){
                 newFileString.prepend(QString("0"));
@@ -364,6 +363,198 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         for (int n = 0; n < labels.count(); n++){
             stream << "  " << n << ": " << labels.at(n) << "\n";
         }
+
+        yamlFile.close();
+    }
+
+    // RESET THE DISPLAY TO SHOW THE IMAGE THAT WAS THERE AT THE START OF THIS METHOD
+    if (fileStrings.count() > 0){
+        image = LAUImage(fileStrings.first());
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
+        label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+        this->setWindowTitle(QFileInfo(fileStrings.first()).fileName());
+    }
+}
+
+/*************************************************************************************/
+/*************************************************************************************/
+/*************************************************************************************/
+void LAUYoloPoseLabelerWidget::onExportLabelsForYoloClassifierTraining()
+{
+    QSettings settings;
+    QString directory = settings.value("LAUYoloPoseLabelerWidget::inputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString inputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory to find labeled data..."), directory);
+    if (inputDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::inputDirectoryString", inputDirectoryString);
+    } else {
+        return;
+    }
+
+    // FIND ALL IMAGES INSIDE NESTED FOLDERS OF THE INPUT DIRECTORY
+    QStringList inputImageStrings;
+    QStringList directoryList;
+    QDir currentDirectory;
+
+    directoryList.append(inputDirectoryString);
+    while (directoryList.count() > 0) {
+        currentDirectory.setPath(directoryList.takeFirst());
+        QStringList list = currentDirectory.entryList();
+        while (list.count() > 0) {
+            QString item = list.takeFirst();
+            if (!item.startsWith(".")) {
+                QDir dir(currentDirectory.absolutePath().append(QString("/").append(item)));
+                if (dir.exists()) {
+                    directoryList.append(dir.absolutePath());
+                } else if (item.endsWith(".tif")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                } else if (item.endsWith(".tiff")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                }
+            }
+        }
+    }
+
+    directory = settings.value("LAUYoloPoseLabelerWidget::outputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString outputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory for outputing training data..."), directory);
+    if (outputDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::outputDirectoryString", outputDirectoryString);
+    } else {
+        return;
+    }
+
+    QDir imageDir(QString("%1/%2").arg(outputDirectoryString).arg("images"));
+    if (imageDir.exists() == false){
+        imageDir.mkdir(imageDir.absolutePath());
+    }
+
+    QDir imageTrainDir(QString("%1/%2").arg(imageDir.absolutePath()).arg("train"));
+    if (imageTrainDir.exists() == false){
+        imageTrainDir.mkdir(imageTrainDir.absolutePath());
+    }
+
+    QDir imageValidDir(QString("%1/%2").arg(imageDir.absolutePath()).arg("val"));
+    if (imageValidDir.exists() == false){
+        imageValidDir.mkdir(imageValidDir.absolutePath());
+    }
+
+    QList<QDir> classesImageTrainDirs;
+    QList<QDir> classesImageValidDirs;
+    QStringList labels = palette->labels();
+    for (int n = 0; n < labels.count(); n++){
+        classesImageTrainDirs << QDir(QString("%1/%2").arg(imageTrainDir.absolutePath()).arg(labels.at(n)));
+        if (classesImageTrainDirs.last().exists() == false){
+            classesImageTrainDirs.last().mkdir(classesImageTrainDirs.last().absolutePath());
+        }
+
+        classesImageValidDirs << QDir(QString("%1/%2").arg(imageValidDir.absolutePath()).arg(labels.at(n)));
+        if (classesImageValidDirs.last().exists() == false){
+            classesImageValidDirs.last().mkdir(classesImageValidDirs.last().absolutePath());
+        }
+    }
+
+    // SAVE THE CURRENT IMAGE ON SCREEN IF DIRTY
+    if (palette->isDirty()){
+        image.setXmlData(palette->xml());
+        image.save(fileStrings.first());
+        palette->setDirty(false);
+    }
+
+    // CREATE A PROGRESS DIALOG SO USER CAN ABORT
+    QProgressDialog progressDialog(QString("Processing images..."), QString("Abort"), 0, inputImageStrings.count(), this, Qt::Sheet);
+    progressDialog.setModal(Qt::WindowModal);
+    progressDialog.show();
+
+    int validImageCounter = 0;
+    for (int n = 0; n < inputImageStrings.count(); n++){
+        if (progressDialog.wasCanceled()) {
+            break;
+        }
+        progressDialog.setValue(n);
+        qApp->processEvents();
+
+        QString string = inputImageStrings.at(n);
+        LAUImage image(string);
+        if (image.xmlData().isEmpty() == false){
+            validImageCounter++;
+            palette->setXml(image.xmlData());
+            palette->setImageSize(image.width(), image.height());
+            label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+            this->setWindowTitle(image.filename());
+            qApp->processEvents();
+
+#ifdef ZOOMINTOHEAD
+            int left = (image.width() - 640)/2;
+            int top = (image.height() - 640)/2;
+            QRect rect(left, top, 640, 640);
+
+            // GET STRING THAT WE CAN WRITE TO LABELS FILE
+            QString labelString = palette->labelString(&rect, true);
+
+            // CROP AND RESCALE IMAGE FOR TRAINING
+            image = image.crop(rect.left(), rect.top(), rect.width(), rect.height());
+            image.setXmlData(palette->xml(rect, 1.0, true));
+#else
+            int left = (image.width() - 1000)/2;
+            int top = (image.height() - 1000)/2;
+            QRect rect(left, top, 1000, 1000);
+
+            // GET STRING THAT WE CAN WRITE TO LABELS FILE
+            QString labelString = palette->labelString(&rect, false);
+
+            // CROP AND RESCALE IMAGE FOR TRAINING
+            image = image.crop(rect.left(), rect.top(), rect.width(), rect.height()).rescale(640,640);
+            image.setXmlData(palette->xml(rect, 0.640));
+#endif
+            // GENERATE NEW LABEL STRING
+            int classIndex = palette->getClass();
+
+            QString newFileString = QString("%1").arg(validImageCounter);
+            while (newFileString.length() < 9){
+                newFileString.prepend(QString("0"));
+            }
+
+            if (validImageCounter % 2){
+                image.save(QString("%1/%2.tif").arg(classesImageTrainDirs.at(classIndex).absolutePath()).arg(newFileString));
+            } else {
+                image.save(QString("%1/%2.tif").arg(classesImageValidDirs.at(classIndex).absolutePath()).arg(newFileString));
+            }
+        }
+    }
+    progressDialog.setValue(inputImageStrings.count());
+
+    QFile yamlFile(QString("%1/%2.yaml").arg(outputDirectoryString).arg(outputDirectoryString.split("/").last()));
+    if (yamlFile.open(QIODevice::WriteOnly)){
+        QTextStream stream(&yamlFile);
+        stream << "# Ultralytics YOLO 🚀, AGPL-3.0 license\n";
+        stream << "# COCO8-classifier dataset (first 8 images from COCO train2017) by Ultralytics\n";
+        stream << "\n";
+        stream << "# Example usage: yolo train data=coco8-pose.yaml\n";
+        stream << "# parent\n";
+        stream << "# ├── ultralytics\n";
+        stream << "# └── datasets\n";
+        stream << "#     └── cowPose  ← downloads here (1 MB)\n";
+        stream << "\n";
+        stream << "# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]\n";
+        stream << "path:  " << outputDirectoryString << " # dataset root dir\n";
+        stream << "train: images/train # train images (relative to 'path') 4 images\n";
+        stream << "val:   images/val # val images (relative to 'path') 4 images\n";
+        stream << "\n";
+        stream << "# number of classes\n";
+        stream << "nc: " << palette->labels().count() << "\n";
+        stream << "\n";
+        stream << "# Class Names\n";
+        stream << "names: [";
+
+        QStringList labels = palette->labels();
+        for (int n = 0; n < labels.count(); n++){
+            if (n > 0){
+                stream << ",\"" << labels.at(n) << "\"";
+            } else {
+                stream << "\"" << labels.at(n) << "\"";
+            }
+        }
+        stream << "]\n";
 
         yamlFile.close();
     }
@@ -557,7 +748,18 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
         }
     }
 
+    // CREATE A PROGRESS DIALOG SO USER CAN ABORT
+    QProgressDialog progressDialog(QString("Labeling images..."), QString("Abort"), 0, inputImageStrings.count(), this, Qt::Sheet);
+    progressDialog.setModal(Qt::WindowModal);
+    progressDialog.show();
+
     for (int n = 0; n < inputImageStrings.count(); n++){
+        if (progressDialog.wasCanceled()) {
+            break;
+        }
+        progressDialog.setValue(n);
+        qApp->processEvents();
+
         QString string = inputImageStrings.at(n);
         LAUImage image(string);
 
@@ -628,6 +830,7 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
             qApp->processEvents();
         }
     }
+    progressDialog.setValue(inputImageStrings.count());
 
     // RESET THE DISPLAY TO SHOW THE IMAGE THAT WAS THERE AT THE START OF THIS METHOD
     if (fileStrings.count() > 0){
@@ -646,19 +849,23 @@ void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
 {
     QMenu contextMenu(tr("Tools"), this);
 
-    QAction action1("Export Labels for Yolo Training", this);
-    connect(&action1, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloTraining()));
-    contextMenu.addAction(&action1);
+    QAction *action = new QAction("Export Labels for Yolo Training", this);
+    connect(action, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloTraining()));
+    contextMenu.addAction(action);
 
-    QAction action2("Validate Trained Pose Model", this);
-    connect(&action2, SIGNAL(triggered()), this, SLOT(onLabelImagesFromDisk()));
-    contextMenu.addAction(&action2);
+    action = new QAction("Export Labels for Classifier Training", this);
+    connect(action, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloClassifierTraining()));
+    contextMenu.addAction(action);
 
-    QAction action3("Sort Images by Class", this);
-    connect(&action3, SIGNAL(triggered()), this, SLOT(onSortByClass()));
-    contextMenu.addAction(&action3);
+    action = new QAction("Validate Trained Pose Model", this);
+    connect(action, SIGNAL(triggered()), this, SLOT(onLabelImagesFromDisk()));
+    contextMenu.addAction(action);
 
-    contextMenu.exec(event->globalPos());
+    action = new QAction("Sort Images by Class", this);
+    connect(action, SIGNAL(triggered()), this, SLOT(onSortByClass()));
+    contextMenu.addAction(action);
+
+    contextMenu.exec(event->globalPosition().toPoint());
 }
 
 /*************************************************************************************/
