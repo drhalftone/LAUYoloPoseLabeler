@@ -788,7 +788,14 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
                         }
                         palette->setClass(0);
                         for (int n = 0; n < palette->fiducials(); n++){
+#ifdef ZOOMINTOHEAD
+                            if (n < 6 || n > 11){
+                                continue;
+                            }
+                            palette->setFiducial(n, qRound(pointsA.at(n-4).x()), qRound(pointsA.at(n-4).y()), (pointsA.at(n-4).z() > 0.5));
+#else
                             palette->setFiducial(n, qRound(pointsA.at(n+2).x()), qRound(pointsA.at(n+2).y()), (pointsA.at(n+2).z() > 0.5));
+#endif
                         }
                     } else {
                         if (palette->getClass() != 1){
@@ -796,7 +803,14 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
                         }
                         palette->setClass(1);
                         for (int n = 0; n < palette->fiducials(); n++){
+#ifdef ZOOMINTOHEAD
+                            if (n < 6 || n > 11){
+                                continue;
+                            }
+                            palette->setFiducial(n, qRound(pointsB.at(n-4).x()), qRound(pointsB.at(n-4).y()), (pointsB.at(n-4).z() > 0.5));
+#else
                             palette->setFiducial(n, qRound(pointsB.at(n+2).x()), qRound(pointsB.at(n+2).y()), (pointsB.at(n+2).z() > 0.5));
+#endif
                         }
                     }
 
@@ -1126,6 +1140,9 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect *rect, bool flag) const
 
         // 6, 7, 8, 9, 10, 11
         for (int n = 6; n < 12 && n < fiducialWidgets.count(); n++){
+            if (flag && (n < 6 || n > 11)){
+                continue;
+            }
             xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - 40);
             xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() + 40);
             yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - 40);
@@ -1152,6 +1169,9 @@ QString LAUYoloPoseLabelerPalette::labelString(QRect *rect, bool flag) const
         int yMax = -1000;
 
         for (int n = 0; n < fiducialWidgets.count(); n++){
+            if (flag && (n < 6 || n > 11)){
+                continue;
+            }
             xMin = qMin(xMin, fiducialWidgets.at(n)->xSpinBox->value() - 40);
             xMax = qMax(xMax, fiducialWidgets.at(n)->xSpinBox->value() + 40);
             yMin = qMin(yMin, fiducialWidgets.at(n)->ySpinBox->value() - 40);

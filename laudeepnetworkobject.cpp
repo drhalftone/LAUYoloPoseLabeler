@@ -239,6 +239,14 @@ LAUYoloPoseObject::LAUYoloPoseObject(QString filename, QObject *parent) : LAUDee
 
         inObject = LAUMemoryObject(inShapes.at(0).at(2), inShapes.at(0).at(3), inShapes.at(0).at(0), sizeof(float), inShapes.at(0).at(1));
         otObject = LAUMemoryObject(otShapes.at(0).at(2), otShapes.at(0).at(1), otShapes.at(0).at(0), sizeof(float));
+
+        if (otObject.height() == 45){
+            numFiducials = 13;
+            numClasses = 2;
+        } else if (otObject.height() == 24){
+            numFiducials = 6;
+            numClasses = 2;
+        }
     }
 }
 
@@ -378,9 +386,9 @@ QList<QVector3D> LAUYoloPoseObject::points(int index, float *confidence)
 
             std::vector<Keypoint> kps;
             for (unsigned int f = 0; f < numFiducials; f++){
-                kps.emplace_back(*(float*)otObject.constPixel(col, 3*f + (4 + numFiducials) + 0),
-                                 *(float*)otObject.constPixel(col, 3*f + (4 + numFiducials) + 1),
-                                 *(float*)otObject.constPixel(col, 3*f + (4 + numFiducials) + 2));
+                kps.emplace_back(*(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 0),
+                                 *(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 1),
+                                 *(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 2));
             }
             bboxList.push_back(bbox);
             scoreList.push_back(score);
