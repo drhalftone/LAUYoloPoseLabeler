@@ -39,6 +39,26 @@ LAUDeepNetworkObject::LAUDeepNetworkObject(QString filename, QObject *parent) : 
         net = cv::dnn::readNetFromONNX(filename.toStdString());
         net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
         net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+
+        std::vector<cv::dnn::MatShape> inLayerShapes;
+        std::vector<cv::dnn::MatShape> otLayerShapes;
+        net.getLayerShapes(cv::dnn::MatShape(), 0, inLayerShapes, otLayerShapes);
+        for (unsigned int n = 0; n < inLayerShapes.size(); n++){
+            QList<int> dimensions;
+            for (unsigned int m = 0; m < inLayerShapes.at(n).size(); m++){
+                dimensions << inLayerShapes.at(n).at(m);
+            }
+            inShapes << dimensions;
+        }
+
+        net.getLayerShapes(cv::dnn::MatShape(), net.getLayerId("output0"), inLayerShapes, otLayerShapes);
+        for (unsigned int n = 0; n < otLayerShapes.size(); n++){
+            QList<int> dimensions;
+            for (unsigned int m = 0; m < otLayerShapes.at(n).size(); m++){
+                dimensions << otLayerShapes.at(n).at(m);
+            }
+            otShapes << dimensions;
+        }
     } catch (cv::Exception &e) {
         qDebug() << QString(e.msg.data());
     }
@@ -217,8 +237,8 @@ LAUYoloPoseObject::LAUYoloPoseObject(QString filename, QObject *parent) : LAUDee
     if (net.empty() == false){
         layerNames.push_back("output0");
 
-        inObject = LAUMemoryObject(640, 640, 1, sizeof(float), 3);
-        otObject = LAUMemoryObject(8400, 45, 1, sizeof(float));
+        inObject = LAUMemoryObject(inShapes.at(0).at(2), inShapes.at(0).at(3), inShapes.at(0).at(0), sizeof(float), inShapes.at(0).at(1));
+        otObject = LAUMemoryObject(otShapes.at(0).at(2), otShapes.at(0).at(1), otShapes.at(0).at(0), sizeof(float));
     }
 }
 
@@ -258,7 +278,7 @@ QList<LAUMemoryObject> LAUYoloPoseObject::process(LAUImage image, int frame)
     memcpy(inObject.constFrame(1), matG.data, inObject.block());
     memcpy(inObject.constFrame(2), matB.data, inObject.block());
 
-    std::vector<int> dims = {1, 3, (int)inObject.width(), (int)inObject.height()};
+    std::vector<int> dims = {1, (int)inObject.frames(), (int)inObject.width(), (int)inObject.height()};
     cv::Mat onnxMat(dims, CV_32F, inObject.constPointer());
 
     net.setInput(onnxMat);
@@ -285,12 +305,12 @@ QList<LAUMemoryObject> LAUYoloPoseObject::process(LAUMemoryObject object, int fr
 {
     QList<LAUMemoryObject> objects;
 
-    cv::Mat mat(640, 640, CV_32F);
+    cv::Mat mat(inObject.width(), inObject.height(), CV_32F);
     if (object.depth() == sizeof(unsigned char)) {
         cv::Mat matA = cv::Mat(object.height(), object.width(), CV_8U, object.constFrame(frame), object.step());
         cv::Mat matC;
         matA.convertTo(matC, CV_32F);
-        cv::copyMakeBorder(matC, mat, 0, 160, 0, 0, cv::BORDER_CONSTANT, 0);
+        cv::copyMakeBorder(matC, mat, 0, ((int)inObject.height()-(int)object.height()), 0, 0, cv::BORDER_CONSTANT, 0);
     } else if (object.depth() == sizeof(unsigned short)) {
         cv::Mat matA = cv::Mat(object.height(), object.width(), CV_16U, object.constFrame(frame), object.step());
 
@@ -303,13 +323,13 @@ QList<LAUMemoryObject> LAUYoloPoseObject::process(LAUMemoryObject object, int fr
 
         cv::Mat matD;
         matC.copyTo(matD, mskC);
-        cv::copyMakeBorder(matD, mat, 0, 160, 0, 0, cv::BORDER_CONSTANT, 0);
+        cv::copyMakeBorder(matD, mat, 0, ((int)inObject.height()-(int)object.height()), 0, 0, cv::BORDER_CONSTANT, 0);
     }
     memcpy(inObject.constFrame(0), mat.data, inObject.block());
     memcpy(inObject.constFrame(1), mat.data, inObject.block());
     memcpy(inObject.constFrame(2), mat.data, inObject.block());
 
-    std::vector<int> dims = {1, 3, 640, 640};
+    std::vector<int> dims = {1, (int)inObject.frames(), (int)inObject.width(), (int)inObject.height()};
     cv::Mat onnxMat(dims, CV_32F, inObject.constPointer());
 
     net.setInput(onnxMat);
@@ -357,10 +377,10 @@ QList<QVector3D> LAUYoloPoseObject::points(int index, float *confidence)
             bbox.height = y1 - y0;
 
             std::vector<Keypoint> kps;
-            for (unsigned int f = 0; f < 13; f++){
-                kps.emplace_back(*(float*)otObject.constPixel(col, 3*f + 6),
-                                 *(float*)otObject.constPixel(col, 3*f + 7),
-                                 *(float*)otObject.constPixel(col, 3*f + 8));
+            for (unsigned int f = 0; f < numFiducials; f++){
+                kps.emplace_back(*(float*)otObject.constPixel(col, 3*f + (4 + numFiducials) + 0),
+                                 *(float*)otObject.constPixel(col, 3*f + (4 + numFiducials) + 1),
+                                 *(float*)otObject.constPixel(col, 3*f + (4 + numFiducials) + 2));
             }
             bboxList.push_back(bbox);
             scoreList.push_back(score);
@@ -387,7 +407,7 @@ QList<QVector3D> LAUYoloPoseObject::points(int index, float *confidence)
 
             // ADD FIDUCIALS TO OUTPUT VECTOR
             std::vector<Keypoint> kps = kpList.at(col);
-            for (unsigned int f = 0; f < 13; f++){
+            for (unsigned int f = 0; f < numFiducials; f++){
                 points << QVector3D(kps.at(f).position.x, kps.at(f).position.y, kps.at(f).position.z);
             }
         }

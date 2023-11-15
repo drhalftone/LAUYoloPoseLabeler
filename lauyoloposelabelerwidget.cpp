@@ -865,7 +865,7 @@ void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
     connect(action, SIGNAL(triggered()), this, SLOT(onSortByClass()));
     contextMenu.addAction(action);
 
-    contextMenu.exec(event->globalPosition().toPoint());
+    contextMenu.exec(event->globalPos());
 }
 
 /*************************************************************************************/

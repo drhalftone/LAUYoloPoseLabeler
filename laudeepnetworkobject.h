@@ -56,6 +56,8 @@ protected:
     cv::dnn::Net net;
     std::vector<std::string> layerNames;
 #endif
+    QList<QList<int>> inShapes;
+    QList<QList<int>> otShapes;
     const cv::Size modelShape = cv::Size(640, 640);
     const float modelScoreThreshold{0.70};
     const float modelNMSThreshold{0.50};
@@ -95,9 +97,21 @@ public:
     QList<LAUMemoryObject> process(LAUImage image, int frame = 0);
     QList<QVector3D> points(int index, float* confidence);
 
+    void setNumberOfClasses(int val)
+    {
+        numClasses = val;
+    }
+
+    void setNumberOfFiducials(int val)
+    {
+        numFiducials = val;
+    }
+
 signals:
 
 private:
+    int numClasses = 0;
+    int numFiducials = 0;
     LAUMemoryObject inObject;
     LAUMemoryObject otObject;
 };
