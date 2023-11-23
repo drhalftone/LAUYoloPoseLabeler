@@ -243,6 +243,9 @@ LAUYoloPoseObject::LAUYoloPoseObject(QString filename, QObject *parent) : LAUDee
         if (otObject.height() == 45){
             numFiducials = 13;
             numClasses = 2;
+        } else if (otObject.height() == 15){
+            numFiducials = 5;
+            numClasses = 1;
         } else if (otObject.height() == 24){
             numFiducials = 6;
             numClasses = 2;
@@ -385,10 +388,18 @@ QList<QVector3D> LAUYoloPoseObject::points(int index, float *confidence)
             bbox.height = y1 - y0;
 
             std::vector<Keypoint> kps;
-            for (unsigned int f = 0; f < numFiducials; f++){
-                kps.emplace_back(*(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 0),
-                                 *(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 1),
-                                 *(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 2));
+            if (numFiducials == 5){
+                for (unsigned int f = 0; f < numFiducials; f++){
+                    kps.emplace_back(*(float*)otObject.constPixel(col, 2*f + (4 + numClasses) + 0),
+                                     *(float*)otObject.constPixel(col, 2*f + (4 + numClasses) + 1),
+                                     1.0);
+                }
+            } else {
+                for (unsigned int f = 0; f < numFiducials; f++){
+                    kps.emplace_back(*(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 0),
+                                     *(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 1),
+                                     *(float*)otObject.constPixel(col, 3*f + (4 + numClasses) + 2));
+                }
             }
             bboxList.push_back(bbox);
             scoreList.push_back(score);

@@ -1,7 +1,7 @@
 CONFIG   += c++11
 CONFIG   += opencv
 
-DEFINES  += ZOOMINTOHEAD
+DEFINES  += USECOWFIDUCIALS #ZOOMINTOHEAD
 
 QT       += core gui widgets
 
@@ -23,11 +23,6 @@ HEADERS += \
     laumemoryobject.h \
     laudeepnetworkobject.h \
     lauyoloposelabelerwidget.h
-
-# Default rules for deployment.
-qnx: target.path = /tmp/$${TARGET}/bin
-else: unix:!android: target.path = /opt/$${TARGET}/bin
-!isEmpty(target.path): INSTALLS += target
 
 unix:macx {
     QMAKE_CXXFLAGS += -msse2 -msse3 -mssse3 -msse4.1

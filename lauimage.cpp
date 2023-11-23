@@ -743,6 +743,27 @@ LAUImage LAUImage::flip(QWidget *parent, bool *wasCanceled)
 /****************************************************************************/
 /****************************************************************************/
 /****************************************************************************/
+LAUImage LAUImage::zeroPad(int left, int top, int right, int bottom)
+{
+    LAUImage image(width()+left+right, height()+top+bottom, depth(), profile(), yRes(), xRes());
+    image.setParentName(parentName());
+    image.setXmlData(xmlData());
+    memset(image.constScanLine(0), 0, image.step()*image.height());
+
+    // COPY PIXELS OVER ROW BY ROW
+    for (int row = 0; row < height(); row++){
+        // FIND THE ADDRESS OF THE LEFT MOST PIXEL IN THE CURRENT ROW OF THE OUTPUT IMAGE
+        unsigned char *toBuffer = &(((unsigned char*)image.constScanLine(row + top))[left * image.block()]);
+
+        // COPY OVER AN ENTIRE ROW OF INPUT IMAGE PIXELS
+        memcpy(toBuffer, constScanLine(row), step());
+    }
+    return(image);
+}
+
+/****************************************************************************/
+/****************************************************************************/
+/****************************************************************************/
 LAUImage LAUImage::rotate90(QWidget *parent, bool *wasCanceled)
 {
     LAUImage image(width(), height(), depth(), profile(), yRes(), xRes());
