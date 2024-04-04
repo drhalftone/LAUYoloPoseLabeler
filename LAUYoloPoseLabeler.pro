@@ -1,7 +1,7 @@
 CONFIG   += c++11
 CONFIG   += opencv
 
-DEFINES  += ZOOMINTOHEAD
+DEFINES  += #ZOOMINTOHEAD
 
 QT       += core gui widgets
 
