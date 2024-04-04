@@ -46,7 +46,7 @@ LAUYoloPoseLabelerWidget::LAUYoloPoseLabelerWidget(QStringList strings, QWidget 
     if (fileStrings.isEmpty()){
         QSettings settings;
         QString directory = settings.value("LAUYoloPoseLabelerWidget::lastUsedDirectory", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
-        fileStrings = QFileDialog::getOpenFileNames(this, QString("Load images from disk (*.tif)"), directory, QString("*.tif;*.tiff"));
+        fileStrings = QFileDialog::getOpenFileNames(this, QString("Load images from disk (*.tif,*.jpg)"), directory, QString("*.tif;*.tiff;*.jpg"));
         if (fileStrings.isEmpty() == false) {
             settings.setValue("LAUYoloPoseLabelerWidget::lastUsedDirectory", QFileInfo(fileStrings.first()).absolutePath());
         }
@@ -85,6 +85,17 @@ void LAUYoloPoseLabelerWidget::initialize()
     box->layout()->setContentsMargins(6,0,6,6);
     box->layout()->setSpacing(0);
 
+#ifdef USECOWFIDUCIALS
+    QStringList labels;
+    labels << "Cow";
+
+    QStringList fiducials;
+    fiducials << "Cow A";
+    fiducials << "Cow B";
+    fiducials << "Cow C";
+    fiducials << "Cow D";
+    fiducials << "Cow E";
+#else
     QStringList labels;
     labels << "Male";
     labels << "Female";
@@ -103,7 +114,7 @@ void LAUYoloPoseLabelerWidget::initialize()
     fiducials << "Proboscis";
     fiducials << "Labial Palp, Right";
     fiducials << "Genitalia";
-
+#endif
     palette = new LAUYoloPoseLabelerPalette(labels, fiducials);
     connect(label, SIGNAL(emitMousePressEvent(int,int)), palette, SLOT(onSpinBoxValueChanged(int,int)));
     connect(label, SIGNAL(emitPaint(QPainter*,QSize)), palette, SLOT(onPaintEvent(QPainter*,QSize)));
@@ -698,6 +709,88 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
     // KEEP A LIST OF IMAGE FILES AND THEIR CORRESPONDING CONFIDENCES
     QList<ImageWithConfidencePacket> imagePackets;
 
+#ifdef USECOWFIDUCIALS
+    // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE A
+    directory = settings.value("LAUYoloPoseLabelerWidget::labelsDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QString labelsDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving confidence results..."), directory);
+    if (labelsDirectoryString.isEmpty() == false) {
+        settings.setValue("LAUYoloPoseLabelerWidget::labelsDirectoryString", labelsDirectoryString);
+    } else {
+        return;
+    }
+
+    // SAVE THE CURRENT IMAGE ON SCREEN IF DIRTY
+    if (palette->isDirty()){
+        image.setXmlData(palette->xml());
+        image.save(fileStrings.first());
+        palette->setDirty(false);
+    }
+
+    directoryList.append(inputDirectoryString);
+    while (directoryList.count() > 0) {
+        currentDirectory.setPath(directoryList.takeFirst());
+        QStringList list = currentDirectory.entryList();
+        while (list.count() > 0) {
+            QString item = list.takeFirst();
+            if (!item.startsWith(".")) {
+                QDir dir(currentDirectory.absolutePath().append(QString("/").append(item)));
+                if (dir.exists()) {
+                    directoryList.append(dir.absolutePath());
+                } else if (item.endsWith(".tif")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                } else if (item.endsWith(".tiff")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                } else if (item.endsWith(".jpg")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                }
+            }
+        }
+    }
+
+    // CREATE A PROGRESS DIALOG SO USER CAN ABORT
+    QProgressDialog progressDialog(QString("Labeling images..."), QString("Abort"), 0, inputImageStrings.count(), this, Qt::Sheet);
+    progressDialog.setModal(Qt::WindowModal);
+    progressDialog.show();
+
+    for (int n = 0; n < inputImageStrings.count(); n++){
+        if (progressDialog.wasCanceled()) {
+            break;
+        }
+        progressDialog.setValue(n);
+        qApp->processEvents();
+
+        QString string = inputImageStrings.at(n);
+        LAUImage image(string);
+
+        // SET PALETTE WIDGETS FROM XML STRING OF IMAGE
+        palette->setXml(image.xmlData());
+        palette->setImageSize(image.width(), image.height());
+        label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
+        this->setWindowTitle(image.filename());
+
+        QList<LAUMemoryObject> objects = poseNetwork.process(image.zeroPad(0, 0, 0, 640 - image.height()));
+        if (objects.isEmpty() == false){
+            // GET POINTS FOR MALE MOSQUITOS
+            float confidence = 0.70f;
+            QList<QVector3D> points = poseNetwork.points(0, &confidence);
+
+            for (int n = 0; n < palette->fiducials(); n++){
+                palette->setFiducial(n, qRound(points.at(n+2).x()), qRound(points.at(n+2).y()), (points.at(n+2).z() > 0.5));
+            }
+            image.setXmlData(palette->xml());
+
+            QString fileString = QString("%1").arg(n);
+            while (fileString.length() < 5){
+                fileString.prepend("0");
+            }
+            fileString.prepend(labelsDirectoryString);
+            fileString.append(".tif");
+            image.save(fileString);
+            palette->setDirty(false);
+        }
+    }
+    progressDialog.setValue(inputImageStrings.count());
+#else
     // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE A
     directory = settings.value("LAUYoloPoseLabelerWidget::confidenceDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
     QString confidenceDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving confidence results..."), directory);
@@ -743,6 +836,8 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
                     inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
                 } else if (item.endsWith(".tiff")) {
                     inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
+                } else if (item.endsWith(".jpg")) {
+                    inputImageStrings.append(currentDirectory.absolutePath().append(QString("/").append(item)));
                 }
             }
         }
@@ -769,82 +864,81 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
         label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
         this->setWindowTitle(image.filename());
 
-        if (image.xmlData().isEmpty() == false){
-            QList<LAUMemoryObject> objects = poseNetwork.process(image);
-            if (objects.isEmpty() == false){
-                // GET POINTS FOR MALE MOSQUITOS
-                float confidenceA = 0.70f;
-                QList<QVector3D> pointsA = poseNetwork.points(0, &confidenceA);
+        QList<LAUMemoryObject> objects = poseNetwork.process(image);
+        if (objects.isEmpty() == false){
+            // GET POINTS FOR MALE MOSQUITOS
+            float confidenceA = 0.70f;
+            QList<QVector3D> pointsA = poseNetwork.points(0, &confidenceA);
 
-                float confidenceB = 0.70f;
-                QList<QVector3D> pointsB = poseNetwork.points(1, &confidenceB);
+            float confidenceB = 0.70f;
+            QList<QVector3D> pointsB = poseNetwork.points(1, &confidenceB);
 
-                // CONVERT POINTS TO XML STRING
-                if (qMax(confidenceA, confidenceB) > 0.7){
-                    bool errorFlag = false;
-                    if (confidenceA > confidenceB){
-                        if (palette->getClass() != 0){
-                            errorFlag = true;
-                        }
-                        palette->setClass(0);
-                        for (int n = 0; n < palette->fiducials(); n++){
+            // CONVERT POINTS TO XML STRING
+            if (qMax(confidenceA, confidenceB) > 0.7){
+                bool errorFlag = false;
+                if (confidenceA > confidenceB){
+                    if (palette->getClass() != 0){
+                        errorFlag = true;
+                    }
+                    palette->setClass(0);
+                    for (int n = 0; n < palette->fiducials(); n++){
 #ifdef ZOOMINTOHEAD
-                            if (n < 6 || n > 11){
-                                continue;
-                            }
-                            palette->setFiducial(n, qRound(pointsA.at(n-4).x()), qRound(pointsA.at(n-4).y()), (pointsA.at(n-4).z() > 0.5));
+                        if (n < 6 || n > 11){
+                            continue;
+                        }
+                        palette->setFiducial(n, qRound(pointsA.at(n-4).x()), qRound(pointsA.at(n-4).y()), (pointsA.at(n-4).z() > 0.5));
 #else
-                            palette->setFiducial(n, qRound(pointsA.at(n+2).x()), qRound(pointsA.at(n+2).y()), (pointsA.at(n+2).z() > 0.5));
+                        palette->setFiducial(n, qRound(pointsA.at(n+2).x()), qRound(pointsA.at(n+2).y()), (pointsA.at(n+2).z() > 0.5));
 #endif
-                        }
-                    } else {
-                        if (palette->getClass() != 1){
-                            errorFlag = true;
-                        }
-                        palette->setClass(1);
-                        for (int n = 0; n < palette->fiducials(); n++){
+                    }
+                } else {
+                    if (palette->getClass() != 1){
+                        errorFlag = true;
+                    }
+                    palette->setClass(1);
+                    for (int n = 0; n < palette->fiducials(); n++){
 #ifdef ZOOMINTOHEAD
-                            if (n < 6 || n > 11){
-                                continue;
-                            }
-                            palette->setFiducial(n, qRound(pointsB.at(n-4).x()), qRound(pointsB.at(n-4).y()), (pointsB.at(n-4).z() > 0.5));
-#else
-                            palette->setFiducial(n, qRound(pointsB.at(n+2).x()), qRound(pointsB.at(n+2).y()), (pointsB.at(n+2).z() > 0.5));
-#endif
+                        if (n < 6 || n > 11){
+                            continue;
                         }
+                        palette->setFiducial(n, qRound(pointsB.at(n-4).x()), qRound(pointsB.at(n-4).y()), (pointsB.at(n-4).z() > 0.5));
+#else
+                        palette->setFiducial(n, qRound(pointsB.at(n+2).x()), qRound(pointsB.at(n+2).y()), (pointsB.at(n+2).z() > 0.5));
+#endif
                     }
-
-                    QString fileString = QFileInfo(string).fileName().right(9);
-
-                    QString labelStringA = QString("%1").arg(qRound(confidenceA * 10000 + n));
-                    while (labelStringA.length() < 4){
-                        labelStringA.prepend("0");
-                    }
-
-                    QString labelStringB = QString("%1").arg(qRound(confidenceB * 10000 + n));
-                    while (labelStringB.length() < 4){
-                        labelStringB.prepend("0");
-                    }
-
-                    // SAVE THE IMAGE TO THE ERROR STRING BEFORE WE CHANGE ITS XML FIELD TO THE AI MODEL OUTPUT
-                    if (errorFlag){
-                        QString errorString = QString("%1/error_%2_%3_%4").arg(errorDir.absolutePath()).arg(labelStringA).arg(labelStringB).arg(fileString);
-                        image.save(errorString);
-                    }
-                    image.setXmlData(palette->xml());
-
-                    QString labelString = QString("%1/male_%2_%3_%4").arg(maleDir.absolutePath()).arg(labelStringA).arg(labelStringB).arg(fileString);
-                    image.save(labelString);
-
-                    labelString = QString("%1/female_%2_%3_%4").arg(femaleDir.absolutePath()).arg(labelStringB).arg(labelStringA).arg(fileString);
-                    image.save(labelString);
                 }
-                palette->setDirty(false);
+
+                QString fileString = QFileInfo(string).fileName().right(9);
+
+                QString labelStringA = QString("%1").arg(qRound(confidenceA * 10000 + n));
+                while (labelStringA.length() < 4){
+                    labelStringA.prepend("0");
+                }
+
+                QString labelStringB = QString("%1").arg(qRound(confidenceB * 10000 + n));
+                while (labelStringB.length() < 4){
+                    labelStringB.prepend("0");
+                }
+
+                // SAVE THE IMAGE TO THE ERROR STRING BEFORE WE CHANGE ITS XML FIELD TO THE AI MODEL OUTPUT
+                if (errorFlag){
+                    QString errorString = QString("%1/error_%2_%3_%4").arg(errorDir.absolutePath()).arg(labelStringA).arg(labelStringB).arg(fileString);
+                    image.save(errorString);
+                }
+                image.setXmlData(palette->xml());
+
+                QString labelString = QString("%1/male_%2_%3_%4").arg(maleDir.absolutePath()).arg(labelStringA).arg(labelStringB).arg(fileString);
+                image.save(labelString);
+
+                labelString = QString("%1/female_%2_%3_%4").arg(femaleDir.absolutePath()).arg(labelStringB).arg(labelStringA).arg(fileString);
+                image.save(labelString);
             }
-            qApp->processEvents();
+            palette->setDirty(false);
         }
+        qApp->processEvents();
     }
     progressDialog.setValue(inputImageStrings.count());
+#endif
 
     // RESET THE DISPLAY TO SHOW THE IMAGE THAT WAS THERE AT THE START OF THIS METHOD
     if (fileStrings.count() > 0){
