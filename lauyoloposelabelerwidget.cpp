@@ -1,6 +1,7 @@
 #include "lauyoloposelabelerwidget.h"
 #include "laudeepnetworkobject.h"
 
+#include <QDir>
 #include <QMenu>
 #include <QFile>
 #include <QLabel>
@@ -9,6 +10,7 @@
 #include <QBuffer>
 #include <QPainter>
 #include <QGroupBox>
+#include <QMessageBox>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFormLayout>
@@ -46,6 +48,9 @@ LAUYoloPoseLabelerWidget::LAUYoloPoseLabelerWidget(QStringList strings, QWidget 
     if (fileStrings.isEmpty()){
         QSettings settings;
         QString directory = settings.value("LAUYoloPoseLabelerWidget::lastUsedDirectory", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+        if (QDir(directory).exists() == false){
+            directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        }
         fileStrings = QFileDialog::getOpenFileNames(this, QString("Load images from disk (*.tif,*.jpg)"), directory, QString("*.tif;*.tiff;*.jpg"));
         if (fileStrings.isEmpty() == false) {
             settings.setValue("LAUYoloPoseLabelerWidget::lastUsedDirectory", QFileInfo(fileStrings.first()).absolutePath());
@@ -193,10 +198,14 @@ void LAUYoloPoseLabelerWidget::onNextButtonClicked(bool state)
 /*************************************************************************************/
 /*************************************************************************************/
 /*************************************************************************************/
-void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
+void LAUYoloPoseLabelerWidget::onExportLabelsForYoloPoseTraining()
 {
     QSettings settings;
     QString directory = settings.value("LAUYoloPoseLabelerWidget::inputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    if (QDir(directory).exists() == false){
+        directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    QMessageBox::information(this, QString("Export Labels for YOLO Pose Training"), QString("First, select directory to find labeled data."));
     QString inputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory to find labeled data..."), directory);
     if (inputDirectoryString.isEmpty() == false) {
         settings.setValue("LAUYoloPoseLabelerWidget::inputDirectoryString", inputDirectoryString);
@@ -229,6 +238,10 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
     }
 
     directory = settings.value("LAUYoloPoseLabelerWidget::outputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    if (QDir(directory).exists() == false){
+        directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    QMessageBox::information(this, QString("Export Labels for YOLO Pose Training"), QString("Second, set directory for outputing training data."));
     QString outputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory for outputing training data..."), directory);
     if (outputDirectoryString.isEmpty() == false) {
         settings.setValue("LAUYoloPoseLabelerWidget::outputDirectoryString", outputDirectoryString);
@@ -273,6 +286,11 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         palette->setDirty(false);
     }
 
+    // ASK USER HOW MANY TRAINING IMAGES FOR EACH VALIDATION IMAGE
+    int numImages = settings.value("LAUYoloPoseLabelerWidget::numImages", 1).toInt();
+    numImages = QInputDialog::getInt(this, QString("Export Labels for YOLO Pose Training"), QString("How many training images for validation image?"), numImages, 1, 10, 1) + 1;
+    settings.setValue("LAUYoloPoseLabelerWidget::numImages", numImages);
+
     // CREATE A PROGRESS DIALOG SO USER CAN ABORT
     QProgressDialog progressDialog(QString("Processing images..."), QString("Abort"), 0, inputImageStrings.count(), this, Qt::Sheet);
     progressDialog.setModal(Qt::WindowModal);
@@ -291,6 +309,7 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
         if (image.xmlData().isEmpty() == false){
             validImageCounter++;
             palette->setXml(image.xmlData());
+            palette->setFilename(string);
             palette->setImageSize(image.width(), image.height());
             label->setPixmap(QPixmap::fromImage(image.preview(QSize(image.width(), image.height()))));
             this->setWindowTitle(image.filename());
@@ -324,7 +343,7 @@ void LAUYoloPoseLabelerWidget::onExportLabelsForYoloTraining()
                 newFileString.prepend(QString("0"));
             }
 
-            if (validImageCounter % 2){
+            if (validImageCounter % numImages){
                 image.save(QString("%1/%2.tif").arg(imageTrainDir.absolutePath()).arg(newFileString));
                 QFile file(QString("%1/%2.txt").arg(labelTrainDir.absolutePath()).arg(newFileString));
                 if (file.open(QIODevice::WriteOnly)){
@@ -687,6 +706,7 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
 {
     // LET THE USER SELECT THE DIRECTORY FOR LOADING IMAGES
     QSettings settings;
+    QMessageBox::information(this, QString("Validate Labels for YOLO Pose Training"), QString("First, set directory for finding images to label."));
     QString directory = settings.value("LAUYoloPoseLabelerWidget::outputDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
     QString inputDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory to find training data..."), directory);
     if (inputDirectoryString.isEmpty() == false) {
@@ -696,6 +716,7 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
     }
 
     // LOAD A TRAINED MDOEL FROM DISK
+    QMessageBox::information(this, QString("Validate Labels for YOLO Pose Training"), QString("Second, select ONNX model to do the labeling..."));
     LAUYoloPoseObject poseNetwork((QString()));
     if (poseNetwork.isValid() == false){
         return;
@@ -793,6 +814,7 @@ void LAUYoloPoseLabelerWidget::onLabelImagesFromDisk()
 #else
     // ASK THE USER FOR A FOLDER TO SAVE THE IMAGES IN ORDER OF CONFIDENCE A
     directory = settings.value("LAUYoloPoseLabelerWidget::confidenceDirectoryString", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    QMessageBox::information(this, QString("Validate Labels for YOLO Pose Training"), QString("Third, for saving confidence results..."));
     QString confidenceDirectoryString = QFileDialog::getExistingDirectory(this, QString("Set directory for saving confidence results..."), directory);
     if (confidenceDirectoryString.isEmpty() == false) {
         settings.setValue("LAUYoloPoseLabelerWidget::confidenceDirectoryString", confidenceDirectoryString);
@@ -957,13 +979,13 @@ void LAUYoloPoseLabelerWidget::onContextMenuTriggered(QMouseEvent *event)
 {
     QMenu contextMenu(tr("Tools"), this);
 
-    QAction *action = new QAction("Export Labels for Yolo Training", this);
-    connect(action, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloTraining()));
+    QAction *action = new QAction("Export Labels for YOLO Pose Training", this);
+    connect(action, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloPoseTraining()));
     contextMenu.addAction(action);
 
-    action = new QAction("Export Labels for Classifier Training", this);
-    connect(action, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloClassifierTraining()));
-    contextMenu.addAction(action);
+    // action = new QAction("Export Labels for YOLO Classifier Training", this);
+    // connect(action, SIGNAL(triggered()), this, SLOT(onExportLabelsForYoloClassifierTraining()));
+    // contextMenu.addAction(action);
 
     action = new QAction("Validate Trained Pose Model", this);
     connect(action, SIGNAL(triggered()), this, SLOT(onLabelImagesFromDisk()));
@@ -1178,6 +1200,11 @@ QByteArray LAUYoloPoseLabelerPalette::xml(QRect roi, double scale, bool flag) co
     labelString.append(QString("%1").arg(labelsComboBox->currentText()));
     writer.writeTextElement("label", labelString);
 
+    // SAVE THE FILENAME STRING IF AVAILABLE
+    if (originalFileName.isEmpty() == false){
+        writer.writeTextElement("origin", originalFileName);
+    }
+
     // WRITE THE FIDUCIALS TO XML
     for (int n = 0; n < fiducialWidgets.count(); n++){
         if (flag && (n < 6 || n > 11)){
@@ -1391,6 +1418,8 @@ void LAUYoloPoseLabelerPalette::setXml(QByteArray string)
                             }
                         }
                     }
+                } else if (name == "origin"){
+                    originalFileName = reader.readElementText();
                 }
             }
         }

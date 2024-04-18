@@ -81,6 +81,16 @@ public:
         imageHeight = y;
     }
 
+    void setFilename(QString string)
+    {
+        originalFileName = string;
+    }
+
+    QString filename() const
+    {
+        return(originalFileName);
+    }
+
     void setDirty(bool state) { dirtyFlag = state; }
     bool isDirty() const { return(dirtyFlag); }
     QString labelString(QRect *rect, bool flag = false) const;
@@ -128,6 +138,7 @@ public slots:
 
 private:
     bool dirtyFlag = false;
+    QString originalFileName;
     int imageWidth, imageHeight;
     void initialize(QStringList labels, QStringList fiducials);
     QList<LAUFiducialWidget*> fiducialWidgets;
@@ -154,7 +165,7 @@ public:
 public slots:
     void onContextMenuTriggered(QMouseEvent *event);
     void onExportLabelsForYoloClassifierTraining();
-    void onExportLabelsForYoloTraining();
+    void onExportLabelsForYoloPoseTraining();
     void onSortByClass();
     void onLabelImagesFromDisk();
     void onPreviousButtonClicked(bool state);
@@ -169,19 +180,14 @@ protected:
             if (((QKeyEvent*)event)->key() == Qt::Key_Tab){
                 palette->onEnableNextFiducial();
                 return (true);
-            } else if (((QKeyEvent*)event)->key() == Qt::Key_S){
-                palette->onEnableNextFiducial();
-                return (true);
-            } else if (((QKeyEvent*)event)->key() == Qt::Key_Down){
-                palette->onEnableNextFiducial();
-                return (true);
             } else if (((QKeyEvent*)event)->key() == Qt::Key_Backtab){
                 palette->onEnablePreviousFiducial();
                 return (true);
-            } else if (((QKeyEvent*)event)->key() == Qt::Key_W){
-                palette->onEnablePreviousFiducial();
+            } else if (((QKeyEvent*)event)->key() == Qt::Key_S){
+                palette->onEnableNextFiducial();
                 return (true);
-            } else if (((QKeyEvent*)event)->key() == Qt::Key_Up){
+                return (true);
+            } else if (((QKeyEvent*)event)->key() == Qt::Key_W){
                 palette->onEnablePreviousFiducial();
                 return (true);
             } else if (((QKeyEvent*)event)->key() == Qt::Key_Space){
@@ -194,6 +200,11 @@ protected:
             } else if (((QKeyEvent*)event)->key() == Qt::Key_Right){
                 this->onNextButtonClicked(true);
                 return (true);
+            } else if (((QKeyEvent*)event)->key() == Qt::Key_Up){
+                palette->onEnablePreviousFiducial();
+                return (true);
+            } else if (((QKeyEvent*)event)->key() == Qt::Key_Down){
+                palette->onEnableNextFiducial();
             }
         }
         return (false);
