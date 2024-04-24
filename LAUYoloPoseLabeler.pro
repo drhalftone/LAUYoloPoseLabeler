@@ -51,23 +51,21 @@ unix:macx {
 }
 
 win32 {
-    INCLUDEPATH += $$quote(C:/usr/include)
-    DEPENDPATH  += $$quote(C:/usr/include)
-    LIBS +=      -L$$quote(C:/usr/lib) -ltiff -llcms2 -lopengl32
+    INCLUDEPATH += $$quote(C:/usr/Tiff/include)
+    DEPENDPATH  += $$quote(C:/usr/Tiff/include)
+    LIBS +=      -L$$quote(C:/usr/Tiff/lib) -ltiff -llcms2_static -lopengl32
 
     INCLUDEPATH += $$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/include)
     DEPENDPATH  += $$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/include)
-    LIBS +=      -L$$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/lib/intel64) -lippi -lipps -lippcore
+    LIBS +=      -L$$quote(C:/Program Files (x86)/Intel/oneAPI/ipp/latest/lib) -lippi -lipps -lippcore
 
     opencv {
        DEFINES       += USE_OPENCV ENABLEDEEPNETWORK
-       INCLUDEPATH   += $$quote(C:/usr/opencv/include)
-       DEPENDPATH    += $$quote(C:/usr/opencv/include)
-       LIBS          += -L$$quote(C:/usr/opencv/x64/vc16/lib)
-       CONFIG(release, debug|release): LIBS += -lopencv_core481 -lopencv_objdetect481 -lopencv_imgproc481 -lopencv_calib3d481 \
-                                               -lopencv_highgui481 -lopencv_ml481 -lopencv_face481 -lopencv_dnn481 -lopencv_imgcodecs481
-       CONFIG(debug, debug|release):   LIBS += -lopencv_core481d -lopencv_objdetect481d -lopencv_imgproc481d -lopencv_calib3d481d \
-                                               -lopencv_highgui481d -lopencv_ml481d -lopencv_face481d -lopencv_dnn481d -lopencv_imgcodecs481d
+       INCLUDEPATH   += $$quote(C:/usr/OpenCV/include)
+       DEPENDPATH    += $$quote(C:/usr/OpenCV/include)
+       LIBS          += -L$$quote(C:/usr/OpenCV/x64/vc17/lib)
+       CONFIG(release, debug|release): LIBS += -lopencv_core490 -lopencv_dnn490 -lopencv_imgproc490
+       CONFIG(debug, debug|release):   LIBS += -lopencv_core490d -lopencv_dnn490d  -lopencv_imgproc490d
     }
 }
 
